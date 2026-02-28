@@ -1,0 +1,97 @@
+import { useState } from 'react';
+import { PlusCircle, DollarSign } from 'lucide-react';
+import { toast } from 'sonner';
+
+interface AddFundsProps {
+  onAdd: (amount: number) => void;
+}
+
+export function AddFunds({ onAdd }: AddFundsProps) {
+  const [amount, setAmount] = useState('');
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0 || isNaN(amt)) {
+      toast.error('Please enter a valid amount.');
+      return;
+    }
+    onAdd(amt);
+    setAmount('');
+    setIsExpanded(false);
+    toast.success(`Added $${amt.toFixed(2)} to your budget!`);
+  };
+
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    // Allow numbers and decimal point
+    if (value === '' || /^\d*\.?\d{0,2}$/.test(value)) {
+      setAmount(value);
+    }
+  };
+
+  if (!isExpanded) {
+    return (
+      <button
+        onClick={() => setIsExpanded(true)}
+        className="w-full flex items-center justify-center gap-2 py-2.5 md:py-3 bg-white/5 hover:bg-white/10 text-emerald-400 text-sm md:text-base font-medium rounded-xl transition-all border border-white/10 backdrop-blur-sm"
+      >
+        <PlusCircle className="w-4 h-4 md:w-5 md:h-5" />
+        Add Funds
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="relative overflow-hidden bg-gradient-to-br from-[#003057] via-[#00264d] to-[#001933] rounded-3xl p-4 md:p-5 shadow-xl border border-white/10">
+      {/* Background pattern */}
+      <div className="absolute inset-0 opacity-5">
+        <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500 rounded-full blur-3xl transform translate-x-1/2 -translate-y-1/2" />
+      </div>
+
+      <div className="relative">
+        <div className="flex items-center gap-2 mb-3 md:mb-4">
+          <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg">
+            <PlusCircle className="w-3.5 h-3.5 md:w-4 md:h-4 text-white" />
+          </div>
+          <h3 className="text-sm md:text-base font-semibold text-white">Add Funds</h3>
+        </div>
+        
+        <div className="space-y-2.5 md:space-y-3">
+          <div className="relative">
+            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 text-gray-400" />
+            <input
+              type="text"
+              inputMode="decimal"
+              value={amount}
+              onChange={handleAmountChange}
+              placeholder="0.00"
+              autoFocus
+              className="w-full pl-9 md:pl-10 pr-4 py-2.5 md:py-3 bg-white/10 border border-white/20 rounded-xl text-base md:text-lg font-semibold text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent backdrop-blur-sm"
+            />
+          </div>
+          
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setAmount('');
+                setIsExpanded(false);
+              }}
+              className="flex-1 py-2 md:py-2.5 bg-white/10 hover:bg-white/20 text-gray-300 text-sm md:text-base font-medium rounded-xl transition-colors border border-white/20 backdrop-blur-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="flex-1 py-2 md:py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white text-sm md:text-base font-semibold rounded-xl transition-all shadow-lg"
+            >
+              Add Funds
+            </button>
+          </div>
+        </div>
+      </div>
+    </form>
+  );
+}
