@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Buzzget — GT Dining Dollars</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="app-header">
+      <h1 class="logo">Buzzget 🐝</h1>
+      <nav class="tabs">
+        <button class="tab active" data-tab="wallet">Wallet</button>
+        <button class="tab" data-tab="stats">Stats</button>
+      </nav>
+    </header>
+
+    <!-- WALLET TAB -->
+    <section id="tab-wallet" class="tab-panel active">
+      <!-- Hero with wallet animation -->
+      <div class="hero-section">
+        <div class="wallet-visual" id="wallet-visual">
+          <div class="wallet-svg">
+            <svg viewBox="0 0 130 85" fill="none">
+              <defs>
+                <linearGradient id="leather" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" style="stop-color:#6b5344"/>
+                  <stop offset="50%" style="stop-color:#4a3728"/>
+                  <stop offset="100%" style="stop-color:#3d2e22"/>
+                </linearGradient>
+                <linearGradient id="bill" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" style="stop-color:#c9b896"/>
+                  <stop offset="50%" style="stop-color:#e8dcc4"/>
+                  <stop offset="100%" style="stop-color:#c9b896"/>
+                </linearGradient>
+              </defs>
+              <!-- Wallet body - bifold shape: two panels with fold -->
+              <rect x="5" y="10" width="55" height="65" rx="6" fill="url(#leather)" stroke="#5c4635" stroke-width="1.5"/>
+              <rect x="60" y="10" width="65" height="65" rx="6" fill="url(#leather)" stroke="#5c4635" stroke-width="1.5"/>
+              <!-- Fold/crease line -->
+              <line x1="60" y1="10" x2="60" y2="75" stroke="#2d2219" stroke-width="2"/>
+              <!-- Card slots on left panel -->
+              <rect x="12" y="20" width="42" height="14" rx="2" fill="#2d2219"/>
+              <rect x="12" y="38" width="42" height="14" rx="2" fill="#2d2219"/>
+              <!-- Cash slot / bills on right panel -->
+              <rect x="70" y="22" width="48" height="10" rx="1" fill="url(#bill)" stroke="#a89060"/>
+              <rect x="72" y="26" width="44" height="10" rx="1" fill="url(#bill)" stroke="#a89060" opacity="0.9"/>
+              <!-- Money clip / GT gold accent -->
+              <circle cx="105" cy="50" r="11" fill="none" stroke="#B3A369" stroke-width="2"/>
+              <path d="M100 50 L104 54 L110 47" stroke="#B3A369" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="money-float" id="money-float"></div>
+        </div>
+        <span class="hero-value" id="current-spend">$0.00</span>
+        <span class="hero-context" id="budget-context">per meal</span>
+        <span class="hero-meta" id="status-badge">—</span>
+      </div>
+
+      <!-- My Meals (presets) -->
+      <section class="presets-section">
+        <h3>My Meals</h3>
+        <div id="preset-chips" class="preset-chips"></div>
+      </section>
+
+      <!-- Spend section -->
+      <section class="action-section spend-section">
+        <h3>Spend</h3>
+        <div class="action-group">
+          <input type="number" id="spend-amount" placeholder="0.00" min="0" step="0.01" aria-label="Amount spent">
+          <input type="text" id="spend-note" placeholder="What did you buy?" aria-label="Note">
+          <button id="log-spend" class="btn btn-spend">Spend</button>
+        </div>
+        <button type="button" id="save-preset" class="btn-link">Save current as preset</button>
+      </section>
+
+      <!-- Add money section -->
+      <section class="action-section add-section">
+        <h3>Add Money</h3>
+        <div class="action-group">
+          <input type="number" id="add-amount" placeholder="0.00" min="0" step="0.01" aria-label="Amount to add">
+          <button id="add-funds" class="btn btn-add">Add</button>
+        </div>
+      </section>
+
+      <!-- New day hint (shown when opening on a new day) -->
+      <div class="new-day-hint" id="new-day-hint" hidden></div>
+
+      <!-- Mini stats -->
+      <div class="mini-stats">
+        <span><span id="remaining-balance">$0.00</span> left</span>
+        <span><span id="days-left">0</span> days</span>
+        <span id="ahead-inline">—</span>
+      </div>
+
+      <!-- History (compact) -->
+      <details class="card history-card">
+        <summary>History</summary>
+        <ul id="transaction-list" class="transaction-list"></ul>
+      </details>
+
+      <!-- Settings (collapsed) -->
+      <details class="card setup-card">
+        <summary>Settings</summary>
+        <div class="setup-form">
+          <div class="form-row">
+            <label>Total Dining Dollars</label>
+            <input type="number" id="total-dollars" placeholder="400" min="1">
+          </div>
+          <div class="form-row">
+            <label>End Date</label>
+            <input type="date" id="end-date">
+          </div>
+          <div class="form-row">
+            <label>Meals per week</label>
+            <select id="meals-per-week">
+              <option value="5">5</option>
+              <option value="7" selected>7</option>
+              <option value="10">10</option>
+              <option value="14">14</option>
+              <option value="21">21</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Semester</label>
+            <select id="semester">
+              <option value="">—</option>
+              <option value="spring2025">Spring 2025</option>
+              <option value="fall2025">Fall 2025</option>
+              <option value="spring2026">Spring 2026</option>
+              <option value="fall2026">Fall 2026</option>
+              <option value="spring2027">Spring 2027</option>
+            </select>
+          </div>
+          <div id="breaks-list" class="breaks-list"></div>
+          <div class="form-row add-break-row">
+            <input type="date" id="break-start">
+            <input type="date" id="break-end">
+            <button type="button" id="add-break" class="btn btn-secondary">Add Break</button>
+          </div>
+          <div class="form-row">
+            <label>My Meal Presets</label>
+            <div id="presets-list" class="presets-list"></div>
+            <div class="add-preset-row">
+              <input type="text" id="preset-name" placeholder="e.g. Chick-fil-A order">
+              <input type="number" id="preset-amount" placeholder="0.00" min="0" step="0.01">
+              <button type="button" id="add-preset" class="btn btn-secondary">Add</button>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button id="save-budget" class="btn btn-primary">Save</button>
+            <button id="reset-budget" class="btn btn-reset">Reset All</button>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <!-- STATS TAB -->
+    <section id="tab-stats" class="tab-panel">
+      <div class="stats-hero">
+        <h2>Your Dining Stats</h2>
+      </div>
+      <div class="stat-card">
+        <h3>🍽️ Top Foods</h3>
+        <div id="top-foods-chart" class="bar-chart"></div>
+      </div>
+      <div class="stat-card">
+        <h3>📅 By Day of Week</h3>
+        <div id="day-chart" class="day-chart"></div>
+      </div>
+      <div class="stat-card">
+        <h3>💰 Spending Overview</h3>
+        <div id="spend-overview" class="spend-overview"></div>
+      </div>
+      <div class="stat-card empty-state" id="stats-empty">
+        <p>Log some purchases to see your stats!</p>
+      </div>
+    </section>
+  </div>
+
+  <script src="gt-calendar.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
