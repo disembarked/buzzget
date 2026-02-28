@@ -140,6 +140,22 @@ export function useBudget() {
     return Math.max(0, balance);
   }, [settings.total, transactions]);
 
+  // Helper: Get balance as of end of a specific date
+  const getBalanceAsOf = useCallback((asOfDate: Date) => {
+    const targetDateStr = asOfDate.toISOString().slice(0, 10);
+    let balance = settings.total;
+    
+    transactions.forEach((t) => {
+      const txDate = t.date.slice(0, 10);
+      if (txDate <= targetDateStr) {
+        if (t.type === 'add') balance += t.amount;
+        else balance -= t.amount;
+      }
+    });
+    
+    return Math.max(0, balance);
+  }, [settings.total, transactions]);
+
   const getTotalSpent = useCallback(() => {
     return transactions.filter((t) => t.type === 'spend').reduce((sum, t) => sum + t.amount, 0);
   }, [transactions]);
@@ -185,28 +201,53 @@ export function useBudget() {
   }, [settings.startDate, settings.breaks, settings.mealsPerWeek, countEatingDays]);
 
   const getBudgetPerMeal = useCallback(() => {
+    const remaining = getRemainingBalance();
+    const daysLeft = getEatingDaysRemaining();
+    if (daysLeft <= 0) return 0;
+    
+    // Daily forecast based on remaining balance
+    return remaining / daysLeft;
+  }, [getRemainingBalance, getEatingDaysRemaining]);
+
+  const getOriginalDailyBudget = useCallback(() => {
     const totalDays = getTotalEatingDays();
     if (totalDays <= 0) return 0;
     
-    // Simple budget per day calculation
+    // Original daily budget from the plan (never changes)
     return settings.total / totalDays;
-  }, [settings.total, getTotalEatingDays]);
+  }, [getTotalEatingDays, settings.total]);
 
   const getAheadBy = useCallback(() => {
     const totalDays = getTotalEatingDays();
     const elapsed = getEatingDaysElapsed();
-    const spent = getSpentUpToYesterday(); // Only count spending up to yesterday
-    const budgetPerDay = getBudgetPerMeal();
 
     if (totalDays <= 0) return 0;
     
-    // How much we expected to spend by yesterday (end of day)
-    const expectedSpent = elapsed * budgetPerDay;
+    // Calculate original budget per day (using initial total, not adjusted)
+    const originalBudgetPerDay = settings.total / totalDays;
     
-    // If we've spent less than expected, we're ahead
-    // If we've spent more than expected, we're behind
-    return expectedSpent - spent;
-  }, [getTotalEatingDays, getEatingDaysElapsed, getSpentUpToYesterday, getBudgetPerMeal]);
+    // Expected remaining = what we should have left based on original plan AFTER YESTERDAY
+    const expectedRemaining = settings.total - (elapsed * originalBudgetPerDay);
+    
+    // Actual remaining = what we actually have left AS OF END OF YESTERDAY
+    // Start with settings.total and subtract all spending up to yesterday, add all funds
+    let actualRemaining = settings.total;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().slice(0, 10);
+    
+    transactions.forEach((t) => {
+      const txDate = t.date.slice(0, 10);
+      if (txDate < todayStr) {
+        if (t.type === 'add') actualRemaining += t.amount;
+        else actualRemaining -= t.amount;
+      }
+    });
+    
+    // If actual > expected, we're ahead
+    // If actual < expected, we're behind
+    return actualRemaining - expectedRemaining;
+  }, [getTotalEatingDays, getEatingDaysElapsed, settings.total, transactions]);
 
   const getEatingDaysElapsedAsOf = useCallback((asOfDate: Date) => {
     const targetDate = new Date(asOfDate);
@@ -227,40 +268,37 @@ export function useBudget() {
     const targetDate = new Date(asOfDate);
     targetDate.setHours(0, 0, 0, 0);
     
-    // Calculate current rollover (ahead/behind)
-    const currentRollover = getAheadBy();
-    
-    // If viewing current or past date, calculate based on actual spending
-    if (targetDate <= today) {
-      const totalDays = getTotalEatingDays();
-      const elapsed = getEatingDaysElapsedAsOf(asOfDate);
-      const spent = getTotalSpent();
-      const budgetPerDay = getBudgetPerMeal();
-
-      if (totalDays <= 0) return 0;
-      
-      // How much we expected to spend by the selected date
-      const expectedSpent = elapsed * budgetPerDay;
-      
-      // If we've spent less than expected, we're ahead
-      // If we've spent more than expected, we're behind
-      return expectedSpent - spent;
+    // If viewing today, return current ahead/behind
+    if (targetDate.getTime() === today.getTime()) {
+      return getAheadBy();
     }
     
-    // For future dates, add daily allowances for each day in between
-    // Count eating days between today and target date
-    const daysBetween = countEatingDays(
-      today.toISOString().slice(0, 10), 
-      targetDate.toISOString().slice(0, 10), 
-      settings.breaks
-    ) * (settings.mealsPerWeek / 7);
+    const totalDays = getTotalEatingDays();
+    const elapsed = getEatingDaysElapsedAsOf(asOfDate);
     
-    const dailyBudget = getBudgetPerMeal();
+    if (totalDays <= 0) return 0;
     
-    // Accumulated budget = current rollover + (days in between - 1) * daily allowance
-    // Subtract 1 because the target day itself provides the base budget shown separately
-    return currentRollover + ((daysBetween - 1) * dailyBudget);
-  }, [getAheadBy, getTotalEatingDays, getEatingDaysElapsedAsOf, getTotalSpent, getBudgetPerMeal, countEatingDays, settings.breaks, settings.mealsPerWeek]);
+    // Original budget per day (never changes)
+    const originalBudgetPerDay = settings.total / totalDays;
+    
+    // Expected remaining = what balance should be at end of day before target date
+    const expectedRemaining = settings.total - (elapsed * originalBudgetPerDay);
+    
+    // Actual remaining = actual balance at that point in time
+    let actualRemaining;
+    if (targetDate > today) {
+      // Future: use current balance (no future transactions assumed)
+      actualRemaining = getRemainingBalance();
+    } else {
+      // Past: calculate balance as of day before target date
+      const dayBefore = new Date(targetDate);
+      dayBefore.setDate(dayBefore.getDate() - 1);
+      actualRemaining = getBalanceAsOf(dayBefore);
+    }
+    
+    // Ahead/behind = actual - expected
+    return actualRemaining - expectedRemaining;
+  }, [getAheadBy, getTotalEatingDays, getEatingDaysElapsedAsOf, settings.total, getRemainingBalance, getBalanceAsOf]);
 
   const getTodaysSpending = useCallback(() => {
     const today = new Date();
@@ -352,17 +390,6 @@ export function useBudget() {
       .reduce((sum, t) => sum + t.amount, 0);
   }, [transactions]);
 
-  const getWeeklyRollover = useCallback(() => {
-    // Calculate rollover as: (total remaining balance) - (remaining eating days * daily budget)
-    const remaining = getRemainingBalance();
-    const daysLeft = getEatingDaysRemaining();
-    const dailyBudget = getBudgetPerMeal();
-    
-    // If we have more than we "should" have, we're ahead (positive rollover)
-    // If we have less than we "should" have, we're behind (negative rollover)
-    return remaining - (daysLeft * dailyBudget);
-  }, [getRemainingBalance, getEatingDaysRemaining, getBudgetPerMeal]);
-
   const getWeeklyAheadBy = useCallback((weekDate: Date) => {
     const date = new Date(weekDate);
     date.setHours(0, 0, 0, 0);
@@ -380,15 +407,19 @@ export function useBudget() {
     const currentDayOfWeek = currentWeekStart.getDay();
     currentWeekStart.setDate(currentWeekStart.getDate() - currentDayOfWeek);
     
-    const dailyBudget = getBudgetPerMeal();
-    const weeklyAllowance = dailyBudget * settings.mealsPerWeek;
+    // Use ORIGINAL daily budget (not dynamic forecast)
+    const totalDays = getTotalEatingDays();
+    if (totalDays <= 0) return 0;
+    const originalDailyBudget = settings.total / totalDays;
+    const weeklyAllowance = originalDailyBudget * settings.mealsPerWeek;
+    
     const weekNum = getWeekNumber(weekDate);
     
     // If viewing Week 1, there's no rollover - just show spent vs allowance
     if (weekNum === 1) {
       const spentThisWeek = getWeeklySpendingForWeek(weekDate);
-      // Ahead by = 0 - spent (negative if spent, 0 if nothing spent)
-      return -spentThisWeek;
+      // Ahead by = allowance - spent
+      return weeklyAllowance - spentThisWeek;
     }
     
     // For all other weeks (past, current, or future), calculate rollover from all previous weeks
@@ -416,7 +447,7 @@ export function useBudget() {
       }
     }
     
-    // If viewing current week, add this week's spending
+    // If viewing current week, subtract this week's spending
     if (startOfWeek.getTime() === currentWeekStart.getTime()) {
       const spentThisWeek = getWeeklySpendingForWeek(weekDate);
       return accumulatedRollover - spentThisWeek;
@@ -424,7 +455,7 @@ export function useBudget() {
     
     // For past or future weeks, return the accumulated rollover from all previous weeks
     return accumulatedRollover;
-  }, [getBudgetPerMeal, settings.mealsPerWeek, settings.startDate, getWeeklySpendingForWeek, getWeekNumber]);
+  }, [getTotalEatingDays, settings.total, settings.mealsPerWeek, settings.startDate, getWeeklySpendingForWeek, getWeekNumber]);
 
   return {
     settings,
@@ -437,11 +468,13 @@ export function useBudget() {
     deletePreset,
     resetAll,
     getRemainingBalance,
+    getBalanceAsOf,
     getTotalSpent,
     getSpentUpToYesterday,
     getEatingDaysRemaining,
     getEatingDaysElapsed,
     getBudgetPerMeal,
+    getOriginalDailyBudget,
     getAheadBy,
     getEatingDaysElapsedAsOf,
     getAheadByAsOf,

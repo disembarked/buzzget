@@ -53,6 +53,7 @@ export default function App() {
   const daysLeft = budget.getEatingDaysRemaining();
   const totalSpent = budget.getTotalSpent();
   const todaysSpending = budget.getTodaysSpending();
+  const originalDailyBudget = budget.getOriginalDailyBudget();
   
   // Calculate based on selected date
   const today = new Date();
@@ -204,6 +205,7 @@ export default function App() {
                     daysLeft={daysLeft}
                     isViewingToday={isViewingToday}
                     todaysSpending={todaysSpending}
+                    originalDailyBudget={originalDailyBudget}
                   />
                 )}
                 

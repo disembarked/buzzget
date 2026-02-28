@@ -8,7 +8,7 @@ interface AddFundsProps {
 
 export function AddFunds({ onAdd }: AddFundsProps) {
   const [amount, setAmount] = useState('');
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,7 +19,7 @@ export function AddFunds({ onAdd }: AddFundsProps) {
     }
     onAdd(amt);
     setAmount('');
-    setIsExpanded(false);
+    setIsOpen(false);
     toast.success(`Added $${amt.toFixed(2)} to your budget!`);
   };
 
@@ -31,14 +31,19 @@ export function AddFunds({ onAdd }: AddFundsProps) {
     }
   };
 
-  if (!isExpanded) {
+  if (!isOpen) {
     return (
       <button
-        onClick={() => setIsExpanded(true)}
-        className="w-full flex items-center justify-center gap-2 py-2.5 md:py-3 bg-white/5 hover:bg-white/10 text-emerald-400 text-sm md:text-base font-medium rounded-xl transition-all border border-white/10 backdrop-blur-sm"
+        onClick={() => setIsOpen(true)}
+        className="w-full relative overflow-hidden bg-gradient-to-br from-[#003057] via-[#00264d] to-[#001933] rounded-2xl p-3 md:p-4 shadow-xl border border-white/10 hover:border-white/20 transition-all"
       >
-        <PlusCircle className="w-4 h-4 md:w-5 md:h-5" />
-        Add Funds
+        <div className="absolute inset-0 opacity-5">
+          <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500 rounded-full blur-3xl transform translate-x-1/2 -translate-y-1/2" />
+        </div>
+        <div className="relative flex items-center justify-center gap-2 text-white text-sm md:text-base font-medium">
+          <PlusCircle className="w-4 h-4 md:w-5 md:h-5" />
+          Add Funds
+        </div>
       </button>
     );
   }
@@ -77,7 +82,7 @@ export function AddFunds({ onAdd }: AddFundsProps) {
               type="button"
               onClick={() => {
                 setAmount('');
-                setIsExpanded(false);
+                setIsOpen(false);
               }}
               className="flex-1 py-2 md:py-2.5 bg-white/10 hover:bg-white/20 text-gray-300 text-sm md:text-base font-medium rounded-xl transition-colors border border-white/20 backdrop-blur-sm"
             >

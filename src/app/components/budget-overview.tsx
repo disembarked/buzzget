@@ -7,35 +7,54 @@ interface BudgetOverviewProps {
   daysLeft: number;
   isViewingToday?: boolean;
   todaysSpending: number;
+  originalDailyBudget: number;
 }
 
-export function BudgetOverview({ budgetPerMeal, aheadBy, remainingBalance, daysLeft, isViewingToday = true, todaysSpending }: BudgetOverviewProps) {
-  const isAhead = aheadBy > 0.5;
-  const isBehind = aheadBy < -0.5;
+export function BudgetOverview({ 
+  budgetPerMeal, 
+  aheadBy, 
+  remainingBalance, 
+  daysLeft, 
+  isViewingToday = true, 
+  todaysSpending,
+  originalDailyBudget 
+}: BudgetOverviewProps) {
+  // Calculate total available for the selected date
+  // If viewing today: start with (daily allowance + rollover/deficit) then subtract today's spending
+  // If viewing future: daily allowance + rollover/deficit (which accounts for all spending up to today)
+  // IMPORTANT: Use originalDailyBudget (what the plan gives you), not budgetPerMeal (forecast)
+  const totalAvailableForDate = isViewingToday 
+    ? (originalDailyBudget + aheadBy) - todaysSpending
+    : originalDailyBudget + aheadBy;
+  
+  // When viewing today, use totalAvailableForDate (includes today's spending) for status
+  // When viewing other dates, use aheadBy (which is the buffer at that point)
+  const statusValue = isViewingToday ? totalAvailableForDate : aheadBy;
+  
+  // Status logic:
+  // - Behind: statusValue < 0 (need to save)
+  // - On Track: 0 <= statusValue <= originalDailyBudget (have your allowance available)
+  // - Ahead: statusValue > originalDailyBudget (have rollover from being good)
+  const isBehind = statusValue < 0;
+  const isAhead = statusValue > originalDailyBudget;
   
   const statusColor = isAhead ? 'text-emerald-500' : isBehind ? 'text-red-400' : 'text-amber-400';
   const statusBg = isAhead ? 'bg-emerald-500/10' : isBehind ? 'bg-red-500/10' : 'bg-amber-500/10';
   const statusText = isAhead ? 'Ahead' : isBehind ? 'Behind' : 'On Track';
   const StatusIcon = isAhead ? TrendingUp : isBehind ? TrendingDown : Minus;
   
-  // Calculate total available for the selected date
-  // If viewing today: start with (daily allowance + rollover/deficit) then subtract today's spending
-  // If viewing future: daily allowance + rollover/deficit (which accounts for all spending up to today)
-  const totalAvailableForDate = isViewingToday 
-    ? (budgetPerMeal + aheadBy) - todaysSpending
-    : budgetPerMeal + aheadBy;
-  
-  // Determine if we're now in the red after today's spending
+  // Check if you're behind the ORIGINAL PLAN after today's spending
+  // This is the same as totalAvailableForDate when using originalDailyBudget
   const isNowBehind = totalAvailableForDate < 0;
   
   // The amount to display
-  const displayAmount = isNowBehind ? Math.abs(totalAvailableForDate) : totalAvailableForDate;
+  const displayAmount = Math.abs(totalAvailableForDate);
   
   // Display color based on current state after spending
-  // Red if overspent, green if ahead and still have budget, amber otherwise
+  // Red if overspent against plan, green if ahead, amber otherwise
   const displayColor = isNowBehind 
     ? 'text-red-400' 
-    : (aheadBy > 0.5 && totalAvailableForDate > 0)
+    : (totalAvailableForDate > 0.5)
       ? 'text-emerald-400'
       : 'text-amber-400';
 
@@ -83,10 +102,10 @@ export function BudgetOverview({ budgetPerMeal, aheadBy, remainingBalance, daysL
           </div>
           {!isNowBehind && aheadBy > 0 && todaysSpending === 0 && (
             <div className="text-[10px] md:text-xs text-emerald-300 mt-1">
-              Includes ${budgetPerMeal.toFixed(2)} daily allowance
+              Includes ${originalDailyBudget.toFixed(2)} daily allowance
             </div>
           )}
-          {todaysSpending > 0 && (
+          {todaysSpending > 0 && !isNowBehind && (
             <div className="text-[10px] md:text-xs text-gray-300 mt-1">
               ${todaysSpending.toFixed(2)} spent today
             </div>
