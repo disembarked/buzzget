@@ -67,7 +67,7 @@ export function SpendForm({ onSpend, remainingBalance }: SpendFormProps) {
           <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-gradient-to-br from-red-600 to-red-700 flex items-center justify-center shadow-lg">
             <ShoppingBag className="w-3.5 h-3.5 md:w-4 md:h-4 text-white" />
           </div>
-          <h3 className="text-sm md:text-base font-semibold text-white">Log Purchase</h3>
+          <h3 className="text-sm md:text-base font-semibold text-white">Add Purchases</h3>
         </div>
         
         <div className="space-y-2.5 md:space-y-3">

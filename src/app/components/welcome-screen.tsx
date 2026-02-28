@@ -11,7 +11,7 @@ export function WelcomeScreen({ onGetStarted }: WelcomeScreenProps) {
         <span className="text-5xl">🐝</span>
       </div>
       
-      <h2 className="text-2xl font-bold text-white mb-2">Welcome to Buzzget!</h2>
+      <h2 className="text-2xl font-bold text-white mb-2">Welcome to BuzzGet!</h2>
       <p className="text-gray-400 text-center mb-8 max-w-sm">
         Track your Georgia Tech dining dollars and never run out before the end of the semester.
       </p>

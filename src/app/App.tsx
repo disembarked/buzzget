@@ -53,6 +53,7 @@ export default function App() {
   const daysLeft = budget.getEatingDaysRemaining();
   const totalSpent = budget.getTotalSpent();
   const todaysSpending = budget.getTodaysSpending();
+  const todaysFundsAdded = budget.getTodaysFundsAdded();
   const originalDailyBudget = budget.getOriginalDailyBudget();
   
   // Calculate based on selected date
@@ -96,6 +97,9 @@ export default function App() {
     : budget.getWeeklySpendingForWeek(selectedDate);
   
   const weekNumber = budget.getWeekNumber(selectedDate);
+  
+  // Get the actual eating days in the selected week
+  const eatingDaysInWeek = budget.getEatingDaysInWeek(selectedDate);
   
   const isSetup = budget.settings.total > 0 && budget.settings.endDate;
 
@@ -144,9 +148,9 @@ export default function App() {
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#B3A369] to-[#d4c58a] flex items-center justify-center shadow-lg">
                 <span className="text-lg">🐝</span>
               </div>
-              <h1 className="text-xl font-bold text-white">Buzzget</h1>
+              <h1 className="text-xl font-bold text-white">BuzzGet</h1>
             </div>
-            <div className="text-xs text-gray-400">GT Dining Tracker</div>
+            <h1 className="text-xs text-gray-400">GT Dining Tracker</h1>
           </div>
         </div>
       </header>
@@ -205,6 +209,7 @@ export default function App() {
                     daysLeft={daysLeft}
                     isViewingToday={isViewingToday}
                     todaysSpending={todaysSpending}
+                    todaysFundsAdded={todaysFundsAdded}
                     originalDailyBudget={originalDailyBudget}
                   />
                 )}
@@ -220,6 +225,8 @@ export default function App() {
                     currentWeekNumber={weekNumber}
                     isViewingCurrentWeek={isViewingCurrentWeek}
                     isViewingFutureWeek={isViewingFutureWeek}
+                    originalDailyBudget={originalDailyBudget}
+                    eatingDaysInWeek={eatingDaysInWeek}
                   />
                 )}
                 

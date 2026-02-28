@@ -10,6 +10,8 @@ interface WeeklyOverviewProps {
   currentWeekNumber: number;
   isViewingCurrentWeek: boolean;
   isViewingFutureWeek: boolean;
+  originalDailyBudget: number;
+  eatingDaysInWeek: number;
 }
 
 export function WeeklyOverview({ 
@@ -21,10 +23,17 @@ export function WeeklyOverview({
   weeklySpending,
   currentWeekNumber,
   isViewingCurrentWeek,
-  isViewingFutureWeek
+  isViewingFutureWeek,
+  originalDailyBudget,
+  eatingDaysInWeek
 }: WeeklyOverviewProps) {
-  const weeklyBudget = budgetPerMeal * mealsPerWeek;
+  // Use ORIGINAL daily budget times the ACTUAL eating days in this specific week
+  // This accounts for partial weeks at the start/end of semester and breaks
+  const weeklyBudget = originalDailyBudget * eatingDaysInWeek;
+  
   // Account for rollover/deficit in the weekly remaining calculation
+  // For current week: (base allowance + rollover) - spent so far
+  // For future week: base allowance + projected rollover at that point
   const weeklyRemaining = (weeklyBudget + aheadBy) - weeklySpending;
   
   const isAhead = aheadBy > 0.5;
@@ -69,7 +78,7 @@ export function WeeklyOverview({
             ${weeklyBudget.toFixed(2)}
           </div>
           <div className="text-[10px] md:text-xs text-gray-400 mt-1">
-            {mealsPerWeek} eating days per week
+            {eatingDaysInWeek.toFixed(1)} eating days this week
           </div>
         </div>
 

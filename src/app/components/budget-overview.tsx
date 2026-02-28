@@ -7,6 +7,7 @@ interface BudgetOverviewProps {
   daysLeft: number;
   isViewingToday?: boolean;
   todaysSpending: number;
+  todaysFundsAdded: number;
   originalDailyBudget: number;
 }
 
@@ -17,14 +18,15 @@ export function BudgetOverview({
   daysLeft, 
   isViewingToday = true, 
   todaysSpending,
+  todaysFundsAdded,
   originalDailyBudget 
 }: BudgetOverviewProps) {
   // Calculate total available for the selected date
-  // If viewing today: start with (daily allowance + rollover/deficit) then subtract today's spending
+  // If viewing today: start with (daily allowance + rollover/deficit) + funds added today - today's spending
   // If viewing future: daily allowance + rollover/deficit (which accounts for all spending up to today)
   // IMPORTANT: Use originalDailyBudget (what the plan gives you), not budgetPerMeal (forecast)
   const totalAvailableForDate = isViewingToday 
-    ? (originalDailyBudget + aheadBy) - todaysSpending
+    ? (originalDailyBudget + aheadBy) + todaysFundsAdded - todaysSpending
     : originalDailyBudget + aheadBy;
   
   // When viewing today, use totalAvailableForDate (includes today's spending) for status
@@ -44,7 +46,6 @@ export function BudgetOverview({
   const StatusIcon = isAhead ? TrendingUp : isBehind ? TrendingDown : Minus;
   
   // Check if you're behind the ORIGINAL PLAN after today's spending
-  // This is the same as totalAvailableForDate when using originalDailyBudget
   const isNowBehind = totalAvailableForDate < 0;
   
   // The amount to display
@@ -71,7 +72,7 @@ export function BudgetOverview({
         <div className="flex items-center justify-between mb-3 md:mb-4">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-[#B3A369] animate-pulse" />
-            <span className="text-xs md:text-sm font-medium text-gray-300">Buzzget 🐝</span>
+            <span className="text-xs md:text-sm font-medium text-gray-300">BuzzGet 🐝</span>
           </div>
           <div className={`flex items-center gap-1.5 px-2.5 md:px-3 py-1 rounded-full ${statusBg}`}>
             <StatusIcon className={`w-3 h-3 md:w-3.5 md:h-3.5 ${statusColor}`} />
@@ -81,9 +82,9 @@ export function BudgetOverview({
 
         {/* Main amount */}
         <div className="mb-4 md:mb-6 text-center">
-          <div className="text-xs md:text-sm text-gray-400 mb-1">Daily Allowance</div>
+          <div className="text-xs md:text-sm text-gray-400 mb-1">Meal Allowance</div>
           <div className="text-4xl md:text-5xl font-bold text-[#B3A369] tracking-tight">
-            ${budgetPerMeal.toFixed(2)}
+            ${originalDailyBudget.toFixed(2)}
           </div>
         </div>
 
@@ -112,7 +113,7 @@ export function BudgetOverview({
           )}
           {isNowBehind && (
             <div className="text-[10px] md:text-xs text-red-300 mt-1">
-              Save this amount to get back on track
+              Save to Get Back on Track
             </div>
           )}
         </div>

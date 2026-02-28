@@ -174,12 +174,24 @@ export function useBudget() {
     if (!settings.endDate) return 0;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const start = new Date(settings.startDate);
+    start.setHours(0, 0, 0, 0);
     const end = new Date(settings.endDate);
+    end.setHours(0, 0, 0, 0);
+    
+    // If we're viewing a semester that doesn't include today,
+    // return the total eating days for that entire semester
+    if (today < start || today > end) {
+      const calendarDays = countEatingDays(settings.startDate, settings.endDate, settings.breaks);
+      return calendarDays * (settings.mealsPerWeek / 7);
+    }
+    
+    // If we're in the current semester, calculate days remaining from today
     if (today > end) return 0;
     const calendarDays = countEatingDays(today.toISOString().slice(0, 10), settings.endDate, settings.breaks);
     // Adjust for meals per week
     return calendarDays * (settings.mealsPerWeek / 7);
-  }, [settings.endDate, settings.breaks, settings.mealsPerWeek, countEatingDays]);
+  }, [settings.startDate, settings.endDate, settings.breaks, settings.mealsPerWeek, countEatingDays]);
 
   const getTotalEatingDays = useCallback(() => {
     if (!settings.endDate) return 0;
@@ -309,6 +321,16 @@ export function useBudget() {
       .filter((t) => t.type === 'spend' && t.date.slice(0, 10) === todayStr)
       .reduce((sum, t) => sum + t.amount, 0);
   }, [transactions]);
+  
+  const getTodaysFundsAdded = useCallback(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().slice(0, 10);
+    
+    return transactions
+      .filter((t) => t.type === 'add' && t.date.slice(0, 10) === todayStr)
+      .reduce((sum, t) => sum + t.amount, 0);
+  }, [transactions]);
 
   const getWeeklySpending = useCallback(() => {
     const today = new Date();
@@ -390,6 +412,45 @@ export function useBudget() {
       .reduce((sum, t) => sum + t.amount, 0);
   }, [transactions]);
 
+  // Helper: Get the number of eating days in a specific week, considering semester bounds and breaks
+  const getEatingDaysInWeek = useCallback((weekDate: Date) => {
+    const date = new Date(weekDate);
+    date.setHours(0, 0, 0, 0);
+    
+    // Get start of week (Sunday)
+    const startOfWeek = new Date(date);
+    const dayOfWeek = startOfWeek.getDay();
+    startOfWeek.setDate(startOfWeek.getDate() - dayOfWeek);
+    startOfWeek.setHours(0, 0, 0, 0);
+    
+    // Get end of week (Saturday)
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(endOfWeek.getDate() + 6);
+    endOfWeek.setHours(0, 0, 0, 0);
+    
+    // Constrain to semester bounds
+    const semesterStart = new Date(settings.startDate);
+    semesterStart.setHours(0, 0, 0, 0);
+    const semesterEnd = new Date(settings.endDate);
+    semesterEnd.setHours(0, 0, 0, 0);
+    
+    const effectiveStart = startOfWeek < semesterStart ? semesterStart : startOfWeek;
+    const effectiveEnd = endOfWeek > semesterEnd ? semesterEnd : endOfWeek;
+    
+    // If the week is entirely outside the semester, return 0
+    if (effectiveStart > effectiveEnd) return 0;
+    
+    // Count calendar days in this week within semester bounds
+    const calendarDays = countEatingDays(
+      effectiveStart.toISOString().slice(0, 10),
+      effectiveEnd.toISOString().slice(0, 10),
+      settings.breaks
+    );
+    
+    // Apply meals per week ratio (e.g., 5/7 if eating 5 days per week)
+    return calendarDays * (settings.mealsPerWeek / 7);
+  }, [settings.startDate, settings.endDate, settings.breaks, settings.mealsPerWeek, countEatingDays]);
+
   const getWeeklyAheadBy = useCallback((weekDate: Date) => {
     const date = new Date(weekDate);
     date.setHours(0, 0, 0, 0);
@@ -411,19 +472,21 @@ export function useBudget() {
     const totalDays = getTotalEatingDays();
     if (totalDays <= 0) return 0;
     const originalDailyBudget = settings.total / totalDays;
-    const weeklyAllowance = originalDailyBudget * settings.mealsPerWeek;
     
     const weekNum = getWeekNumber(weekDate);
+    
+    // Calculate allowance for the current week based on actual eating days in this week
+    const currentWeekEatingDays = getEatingDaysInWeek(weekDate);
+    const currentWeekAllowance = originalDailyBudget * currentWeekEatingDays;
     
     // If viewing Week 1, there's no rollover - just show spent vs allowance
     if (weekNum === 1) {
       const spentThisWeek = getWeeklySpendingForWeek(weekDate);
       // Ahead by = allowance - spent
-      return weeklyAllowance - spentThisWeek;
+      return currentWeekAllowance - spentThisWeek;
     }
     
     // For all other weeks (past, current, or future), calculate rollover from all previous weeks
-    // Start with Week 1's rollover
     const startDate = new Date(settings.startDate);
     startDate.setHours(0, 0, 0, 0);
     
@@ -435,15 +498,19 @@ export function useBudget() {
       const weekStart = new Date(startDate);
       weekStart.setDate(weekStart.getDate() + ((w - 1) * 7));
       
+      // Get the actual eating days and allowance for this specific week
+      const weekEatingDays = getEatingDaysInWeek(weekStart);
+      const weekAllowance = originalDailyBudget * weekEatingDays;
+      
       // Get spending for that week
       const spentInWeek = getWeeklySpendingForWeek(weekStart);
       
       // Week 1 has no prior rollover
       if (w === 1) {
-        accumulatedRollover = weeklyAllowance - spentInWeek;
+        accumulatedRollover = weekAllowance - spentInWeek;
       } else {
         // Subsequent weeks: carry forward previous rollover + new allowance - spending
-        accumulatedRollover = accumulatedRollover + weeklyAllowance - spentInWeek;
+        accumulatedRollover = accumulatedRollover + weekAllowance - spentInWeek;
       }
     }
     
@@ -455,7 +522,7 @@ export function useBudget() {
     
     // For past or future weeks, return the accumulated rollover from all previous weeks
     return accumulatedRollover;
-  }, [getTotalEatingDays, settings.total, settings.mealsPerWeek, settings.startDate, getWeeklySpendingForWeek, getWeekNumber]);
+  }, [getTotalEatingDays, settings.total, settings.startDate, getWeeklySpendingForWeek, getWeekNumber, getEatingDaysInWeek]);
 
   return {
     settings,
@@ -479,10 +546,13 @@ export function useBudget() {
     getEatingDaysElapsedAsOf,
     getAheadByAsOf,
     getTodaysSpending,
+    getTodaysFundsAdded,
     getWeeklySpending,
     getCurrentWeekNumber,
     getWeekNumber,
     getWeeklySpendingForWeek,
     getWeeklyAheadBy,
+    getEatingDaysInWeek,
+    getTotalEatingDays,
   };
 }

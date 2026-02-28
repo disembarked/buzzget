@@ -20,21 +20,42 @@ export function DateNavigation({ selectedDate, onDateChange, startDate, endDate,
   const end = new Date(endDate);
   end.setHours(0, 0, 0, 0);
   
+  // Check if today is within the semester bounds
+  const isTodayInSemester = today >= start && today <= end;
+  
   const increment = viewMode === 'weekly' ? 7 : 1;
   
   const canGoPrev = viewMode === 'weekly' 
     ? (() => {
-        const newDate = new Date(selectedDate);
-        newDate.setDate(newDate.getDate() - 7);
-        return newDate >= start;
+        // For weekly: check if the START of the previous week is >= semester start
+        const prevWeekDate = new Date(selectedDate);
+        prevWeekDate.setDate(prevWeekDate.getDate() - 7);
+        
+        // Get the start of that week (Sunday)
+        const prevWeekStart = new Date(prevWeekDate);
+        const dayOfWeek = prevWeekStart.getDay();
+        prevWeekStart.setDate(prevWeekStart.getDate() - dayOfWeek);
+        prevWeekStart.setHours(0, 0, 0, 0);
+        
+        return prevWeekStart >= start;
       })()
     : selectedDate > start;
     
   const canGoNext = viewMode === 'weekly'
     ? (() => {
-        const newDate = new Date(selectedDate);
-        newDate.setDate(newDate.getDate() + 7);
-        return newDate <= end;
+        // For weekly: check if the END of the next week is <= semester end
+        const nextWeekDate = new Date(selectedDate);
+        nextWeekDate.setDate(nextWeekDate.getDate() + 7);
+        
+        // Get the end of that week (Saturday)
+        const nextWeekStart = new Date(nextWeekDate);
+        const dayOfWeek = nextWeekStart.getDay();
+        nextWeekStart.setDate(nextWeekStart.getDate() - dayOfWeek);
+        const nextWeekEnd = new Date(nextWeekStart);
+        nextWeekEnd.setDate(nextWeekEnd.getDate() + 6);
+        nextWeekEnd.setHours(23, 59, 59, 999);
+        
+        return nextWeekEnd <= end;
       })()
     : selectedDate < end;
   
@@ -100,10 +121,10 @@ export function DateNavigation({ selectedDate, onDateChange, startDate, endDate,
         
         <div className="flex-1 text-center">
           <div className="flex items-center justify-center gap-2 mb-1">
-            <Calendar className="w-3.5 h-3.5 md:w-4 md:h-4 text-[#B3A369]" />
+          
             {isFuture && (
               <span className="text-[10px] md:text-xs px-1.5 md:px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30">
-                Forecast
+                Ahead
               </span>
             )}
             {isToday && (
@@ -113,7 +134,7 @@ export function DateNavigation({ selectedDate, onDateChange, startDate, endDate,
             )}
           </div>
           <div className="font-semibold text-base md:text-lg">{formatDate(selectedDate)}</div>
-          {!isToday && (
+          {!isToday && isTodayInSemester && (
             <button
               onClick={handleToday}
               className="text-[10px] md:text-xs text-[#B3A369] hover:text-[#d4c58a] mt-1 transition-colors"
