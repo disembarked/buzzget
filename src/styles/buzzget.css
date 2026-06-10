@@ -29,8 +29,8 @@
 }
 body{font-family:var(--font);background:var(--bg);color:var(--text1)}
 
-.outer{display:flex;justify-content:center;align-items:flex-start;padding:12px;min-height:100vh}
-.shell{width:100%;max-width:420px;background:var(--bg2);border-radius:16px;border:1px solid var(--border2);overflow:hidden;display:flex;flex-direction:column;height:680px;position:relative}
+.outer{display:flex;justify-content:stretch;align-items:stretch;padding:0;min-height:100vh;min-height:100dvh}
+.shell{width:100%;max-width:none;background:var(--bg2);border-radius:0;border:none;overflow:hidden;display:flex;flex-direction:column;height:100vh;height:100dvh;position:relative}
 
 .hdr{background:var(--bg2);border-bottom:1px solid var(--border);padding:12px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .hdr-left{display:flex;align-items:center;gap:9px}
@@ -55,7 +55,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text1)}
 .sec-title{font-size:10px;font-weight:600;letter-spacing:0.9px;text-transform:uppercase;color:var(--text3)}
 
 .bal-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px}
-.bal-amount{font-size:32px;font-weight:800;letter-spacing:-1.5px;color:var(--text1);line-height:1.05}
+.bal-amount{font-size:32px;font-weight:500;letter-spacing:-1.5px;color:var(--text1);line-height:1.05}
 .bal-amount.warn{color:var(--red)}
 
 .pace-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:600;margin-top:8px}
