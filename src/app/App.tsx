@@ -296,10 +296,15 @@ export default function App() {
           <button className="dnav-arrow" onClick={() => shiftDate(-1)}><i className="ti ti-chevron-left" /></button>
           <div style={{ textAlign: 'center' }}>
             <div className="dnav-date">{view === 'daily' ? fmtDL(selDate) : wkLabel(selDate)}</div>
-            <div className="dnav-sub">{view === 'daily' ? (isBrk ? 'Break — excluded from pace' : 'Active day') : 'Weekly view'}</div>
+            <div className="dnav-sub">{view === 'daily' ? (isBrk ? 'Academic Break' : 'Active day') : 'Weekly view'}</div>
           </div>
           <button className="dnav-arrow" onClick={() => shiftDate(1)}><i className="ti ti-chevron-right" /></button>
         </div>
+        {!isToday && (
+          <button className="jump-today" onClick={() => setSelDate(ds(tod()))}>
+            <i className="ti ti-arrow-back-up" />Jump to Today
+          </button>
+        )}
         <div className="card">
           <div className="bal-label">Remaining balance</div>
           <div className={`bal-amount ${bal < 0 ? 'warn' : ''}`}>{fmt(bal)}</div>
