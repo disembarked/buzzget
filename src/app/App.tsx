@@ -491,7 +491,7 @@ export default function App() {
           <div className="form-grp" style={{ flex: 1.4 }}><input className="inp" type="text" placeholder="Name" autoComplete="off" value={pName} onChange={e => setPName(e.target.value)} /></div>
           <div className="form-grp" style={{ flex: 0.8 }}><input className="inp" type="number" placeholder="$" min="0" step="0.01" value={pAmt} onChange={e => setPAmt(e.target.value)} /></div>
         </div>
-        <button className="btn btn-ghost" onClick={addPreset}><i className="ti ti-plus" />Add Preset</button>
+        <button className="btn btn-ghost" onClick={addPreset}><i className="ti" />Add Preset</button>
       </div>
       <div className="card">
         <div className="sec-hdr"><span className="sec-title">Data</span></div>
