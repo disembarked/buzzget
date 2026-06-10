@@ -234,19 +234,26 @@ export default function App() {
     setTx([]); setPresets(DEFAULT_PRESETS); setTab('wallet');
   };
 
+  const WELCOMES = ['Welcome', 'Chào mừng', '환영합니다', 'Bienvenido', 'Bienvenue', 'Bem-vindo', 'خوش آمدید', 'स्वागत है', 'ਜੀ ਆਇਆਂ ਨੂੰ', 'સ્વાગત છે'];
+  const [welIdx, setWelIdx] = useState(0);
+  const [welAnim, setWelAnim] = useState(true);
+  useEffect(() => {
+    if (isSetup || tab !== 'wallet') return;
+    const id = setInterval(() => {
+      setWelAnim(false);
+      setTimeout(() => {
+        setWelIdx(i => (i + 1) % WELCOMES.length);
+        setWelAnim(true);
+      }, 280);
+    }, 2200);
+    return () => clearInterval(id);
+  }, [isSetup, tab]);
+
   const Welcome = () => (
     <div className="wel">
-      <div className="wel-title">{(() => {
-        const KEY = 'bz_welcome_lang';
-        let v: string | null = null;
-        try { v = sessionStorage.getItem(KEY); } catch {}
-        if (!v) {
-          const others = ['Chào mừng', '환영합니다', 'Bienvenido', 'Bienvenue', 'Bem-vindo', 'خوش آمدید', 'स्वागत है', 'ਜੀ ਆਇਆਂ ਨੂੰ', 'સ્વાગત છે'];
-          v = Math.random() < 0.8 ? 'Welcome' : others[Math.floor(Math.random() * others.length)];
-          try { sessionStorage.setItem(KEY, v); } catch {}
-        }
-        return v;
-      })()}</div>
+      <div className="wel-title-wrap">
+        <div key={welIdx} className={`wel-title ${welAnim ? 'in' : 'out'}`}>{WELCOMES[welIdx]}</div>
+      </div>
       <button className="btn btn-gold" onClick={() => setTab('settings')}><i className="ti" />Begin</button>
       <div className="wel-body">Visualize and Track your Dining Dollars</div>
     </div>
