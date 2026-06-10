@@ -1,7 +1,7 @@
 
   # Dining Dollar Tracker
 
-  Deployed: https://www.buzzzget.vercel.app
+  Deployed: https://buzzzget.vercel.app
 
   ## Running the code
 
