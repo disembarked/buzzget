@@ -199,23 +199,19 @@ export default function App() {
     setAAmt('');
   };
 
+  const autoSem = useMemo(() => {
+    const today = ds(tod());
+    return semForDate(today) || GT_SEMS.find(s => s.start > today) || GT_SEMS[GT_SEMS.length - 1];
+  }, []);
+
   const [cfgTotal, setCfgTotal] = useState<string>(() => settings.total ? String(settings.total) : '');
-  const [cfgStart, setCfgStart] = useState<string>(() => settings.startDate || '');
-  const [cfgEnd, setCfgEnd] = useState<string>(() => settings.endDate || '');
 
   const saveSett = () => {
     const total = parseFloat(cfgTotal || '0');
-    if (!total || total <= 0 || !cfgStart || !cfgEnd) { showToast('Fill in all fields', 'err'); return; }
-    if (cfgStart >= cfgEnd) { showToast('Start must be before end date', 'err'); return; }
-    const matched = GT_SEMS.find(s => s.start === cfgStart && s.end === cfgEnd);
-    setSettings({ total, startDate: cfgStart, endDate: cfgEnd, semName: matched ? matched.name : '' });
+    if (!total || total <= 0) { showToast('Enter a starting balance', 'err'); return; }
+    setSettings({ total, startDate: autoSem.start, endDate: autoSem.end, semName: autoSem.name });
     setTab('wallet');
-    showToast('Settings saved', 'ok');
-  };
-  const fillSem = (start: string, end: string, name: string) => {
-    setCfgStart(start); setCfgEnd(end);
-    setSettings(s => ({ ...s, semName: name }));
-    showToast(`${name} dates loaded`, 'ok');
+    showToast(`Saved for ${autoSem.name}`, 'ok');
   };
 
   const [pName, setPName] = useState(''); const [pAmt, setPAmt] = useState('');
@@ -234,7 +230,8 @@ export default function App() {
     setTx([]); setPresets(DEFAULT_PRESETS); setTab('wallet');
   };
 
-  const WELCOMES = ['Welcome', 'Chào mừng', '환영합니다', 'Bienvenido', 'Bienvenue', 'Bem-vindo', 'خوش آمدید', 'स्वागत है', 'ਜੀ ਆਇਆਂ ਨੂੰ', 'સ્વાગત છે'];
+  const WELCOMES = ['Welcome', 'Chào mừng', '환영합니다', 'Bienvenido', 'Bienvenue', 'Bem-vindo', 'خوش آمدید', 'स्वागत है', 'ਜੀ ਆਇਆਂ ਨੂੰ', 'સ્વાગત છે',
+                    '欢迎', 'Willkommen'];
   const [welIdx, setWelIdx] = useState(0);
   const [welAnim, setWelAnim] = useState(true);
   useEffect(() => {
@@ -287,10 +284,10 @@ export default function App() {
           </div>
         )}
         {!cb && nb && (
-          <div className="break-banner" style={{ background: 'var(--bg3)', borderColor: 'var(--border2)' }}>
-            <i className="ti ti-calendar-event" aria-hidden="true" style={{ color: 'var(--text3)' }} />
+          <div className="break-banner" style={{ background: 'var(--gold-bg)', borderColor: 'var(--gold-bd)' }}>
+            <i className="ti ti-calendar-event" aria-hidden="true" style={{ color: 'var(--gold)' }} />
             <div>
-              <div className="break-title" style={{ color: 'var(--text2)' }}>{nb.name} — {pd(nb.s).toLocaleDateString([], { month: 'short', day: 'numeric' })}</div>
+              <div className="break-title" style={{ color: 'var(--gold)' }}>{nb.name} — {pd(nb.s).toLocaleDateString([], { month: 'short', day: 'numeric' })}</div>
               <div className="break-sub">Next Academic Break</div>
             </div>
           </div>
@@ -332,7 +329,10 @@ export default function App() {
         <div className="card">
           <div className="sec-hdr"><span className="sec-title">7-day Activity</span></div>
           <div className="chart-wrap">
-            {chartDays.map((c, i) => (
+            {(() => {
+              const order = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+              return [...chartDays].sort((a, b) => order.indexOf(a.day) - order.indexOf(b.day));
+            })().map((c, i) => (
               <div key={i} className="bar-col">
                 <div className={`bar-fill ${c.isToday ? 'hi' : ''} ${c.brk ? 'brk' : ''}`} style={{ height: (c.brk ? 4 : Math.round((c.spent / maxSp) * 50) + 3) + 'px' }} />
                 <div className="bar-day" style={c.isToday ? { color: 'var(--gold)', fontWeight: 600 } : undefined}>{c.day}</div>
@@ -354,15 +354,15 @@ export default function App() {
             <div className="card">
               <div className="sec-hdr"></div>
               <div className="inp-row">
-                <div className="form-grp" style={{ flex: 1.3 }}><label className="form-lbl">Note</label><input className="inp" type="text" placeholder="What did you eat?" autoComplete="off" value={sNote} onChange={e => setSNote(e.target.value)} /></div>
-                <div className="form-grp" style={{ flex: 0.8 }}><label className="form-lbl">Amount</label><input className="inp" type="number" placeholder="0.00" min="0" step="0.01" value={sAmt} onChange={e => setSAmt(e.target.value)} /></div>
+                <div className="form-grp" style={{ flex: 1.3 }}><label className="form-lbl">Note</label><input className="inp" type="text" name="spend-note" placeholder="What did you eat?" value={sNote} onChange={e => setSNote(e.target.value)} style={{ background: 'rgba(0,0,0,0.18)', borderColor: 'var(--gold-bd)', color: 'var(--gold2)' }} /></div>
+                <div className="form-grp" style={{ flex: 0.8 }}><label className="form-lbl">Amount</label><input className="inp" type="number" placeholder="0.00" min="0" step="0.01" value={sAmt} onChange={e => setSAmt(e.target.value)} style={{ background: 'rgba(0,0,0,0.18)', borderColor: 'var(--gold-bd)', color: 'var(--gold2)' }} /></div>
               </div>
-              <button className="btn btn-ghost" onClick={doSpend}><i className="ti" />Log Spending</button>
+              <button className="btn btn-gold" onClick={doSpend}><i className="ti" />Log Spending</button>
             </div>
             <div className="card">
               <div className="sec-hdr"></div>
-              <div className="form-grp"><input className="inp" type="number" placeholder="Add Funds" min="0" step="0.01" value={aAmt} onChange={e => setAAmt(e.target.value)} /></div>
-              <button className="btn btn-ghost" onClick={doAdd}><i className="ti" />Add Funds</button>
+              <div className="form-grp"><input className="inp" type="number" placeholder="Add Funds" min="0" step="0.01" value={aAmt} onChange={e => setAAmt(e.target.value)} style={{ background: 'rgba(0,0,0,0.18)', borderColor: 'var(--gold-bd)', color: 'var(--gold2)' }}/></div>
+              <button className="btn btn-gold" onClick={doAdd}><i className="ti" />Add Funds</button>
             </div>
           </>
         )}
@@ -411,9 +411,9 @@ export default function App() {
     return (
       <>
         <div className="stats-grid">
-          <div className="sc"><div className="sc-lbl">Total Spent</div><div className="sc-val">{fmt(ts)}</div><div className="sc-sub">of {fmt(settings.total)}</div></div>
+          <div className="sc"><div className="sc-lbl">Total Spent</div><div className="sc-val">{fmt(ts)}</div><div className="sc-sub">of{fmt(settings.total)}</div></div>
           <div className="sc"><div className="sc-lbl">Remaining</div><div className="sc-val" style={{ color: bal >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmt(bal)}</div><div className="sc-sub">{dLeft} days left</div></div>
-          <div className="sc"><div className="sc-lbl">Avg / Active day</div><div className="sc-val">{fmt(avg)}</div><div className="sc-sub">Budget {fmt(bpd)}/Day</div></div>
+          <div className="sc"><div className="sc-lbl">Avg / Active day</div><div className="sc-val">{fmt(avg)}</div><div className="sc-sub">Budget{fmt(bpd)}/Day</div></div>
           <div className="sc"><div className="sc-lbl">Logged Meals</div><div className="sc-val">{txSp.length}</div><div className="sc-sub">Transactions</div></div>
         </div>
         <div className="card">
@@ -477,16 +477,14 @@ export default function App() {
         <button className="btn btn-gold" onClick={saveSett}><i className="ti" />Save Settings</button>
       </div>
       <div className="card">
-        <div className="sec-hdr"><span className="sec-title">Choose Semester</span></div>
-        {GT_SEMS.filter(s => s.end >= ds(tod())).map(s => (
-          <div key={s.name} className="sett-row">
-            <div>
-              <div className="sett-lbl">{s.name}</div>
-              <div className="sett-sub">{pd(s.start).toLocaleDateString([], { month: 'short', day: 'numeric' })} – {pd(s.end).toLocaleDateString([], { month: 'short', day: 'numeric' })}</div>
-            </div>
-            <button className="btn btn-ghost btn-sm" onClick={() => fillSem(s.start, s.end, s.name)}><i className="ti" />Select</button>
+        <div className="sec-hdr"><span className="sec-title">Current Semester</span></div>
+        <div className="sett-row">
+          <div>
+            <div className="sett-lbl">{autoSem.name}</div>
+            <div className="sett-sub">{pd(autoSem.start).toLocaleDateString([], { month: 'short', day: 'numeric' })} – {pd(autoSem.end).toLocaleDateString([], { month: 'short', day: 'numeric' })}</div>
           </div>
-        ))}
+          <span className="badge badge-active">Auto</span>
+        </div>
       </div>
       <div className="card">
         <div className="sec-hdr"><span className="sec-title">Meal Presets</span></div>
@@ -500,10 +498,10 @@ export default function App() {
         </div>
         <div className="divider" />
         <div className="inp-row">
-          <div className="form-grp" style={{ flex: 1.4 }}><input className="inp" type="text" placeholder="Name" autoComplete="off" value={pName} onChange={e => setPName(e.target.value)} /></div>
-          <div className="form-grp" style={{ flex: 0.8 }}><input className="inp" type="number" placeholder="$" min="0" step="0.01" value={pAmt} onChange={e => setPAmt(e.target.value)} /></div>
+          <div className="form-grp" style={{ flex: 1.4 }}><input className="inp" type="text" placeholder="Name" autoComplete="off" value={pName} onChange={e => setPName(e.target.value)} style={{ background: 'rgba(0,0,0,0.18)', borderColor: 'var(--gold-bd)', color: 'var(--gold2)' }}/></div>
+          <div className="form-grp" style={{ flex: 0.8 }}><input className="inp" type="number" placeholder="$" min="0" step="0.01" value={pAmt} onChange={e => setPAmt(e.target.value)} style={{ background: 'rgba(0,0,0,0.18)', borderColor: 'var(--gold-bd)', color: 'var(--gold2)' }}/></div>
         </div>
-        <button className="btn btn-ghost" onClick={addPreset}><i className="ti ti-plus" />Add Preset</button>
+        <button className="btn btn-gold" onClick={addPreset}><i className="ti" />Add Preset</button>
       </div>
       <div className="card">
         <div className="sec-hdr"><span className="sec-title">Data</span></div>
@@ -523,11 +521,7 @@ export default function App() {
         </div>
         <div className="hdr">
           <div className="hdr-left">
-            
-            <div>
-              <div className="hdr-title">BuzzGet</div>
-              <div className="hdr-sub">GT Dining</div>
-            </div>
+            <div className="logo"><i className="ti ti-cash" aria-hidden="true" /></div>
           </div>
           {activeSemName
             ? <div className="sem-badge">{activeSemName}</div>
