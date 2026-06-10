@@ -254,7 +254,7 @@ export default function App() {
       <div className="wel-title-wrap">
         <div key={welIdx} className={`wel-title ${welAnim ? 'in' : 'out'}`}>{WELCOMES[welIdx]}</div>
       </div>
-      <button className="btn btn-gold" onClick={() => setTab('settings')}><i className="ti" />Begin</button>
+      <button className="btn btn-gold" onClick={() => setTab('settings')}><i className="ti" />Start Tracking</button>
       <div className="wel-body">Visualize and Track your Dining Dollars</div>
     </div>
   );
