@@ -1,7 +1,7 @@
 
-  # Wallet app
+  # Dining Dollar Tracker
 
-  This is a code bundle for Wallet app. The original project is available at https://www.figma.com/design/mCKn0grUytvflQaPDfhUQP/Wallet-app.
+  Deployed: https://www.buzzzget.vercel.app
 
   ## Running the code
 
