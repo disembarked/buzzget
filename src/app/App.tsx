@@ -511,7 +511,7 @@ export default function App() {
         </div>
         <div className="hdr">
           <div className="hdr-left">
-            <div className="logo"><i className="ti ti-cash" aria-hidden="true" /></div>
+            
             <div>
               <div className="hdr-title">BuzzGet</div>
               <div className="hdr-sub">GT Dining</div>
