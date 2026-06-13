@@ -411,10 +411,10 @@ export default function App() {
     return (
       <>
         <div className="stats-grid">
-          <div className="sc"><div className="sc-lbl">Total Spent</div><div className="sc-val">{fmt(ts)}</div><div className="sc-sub">of{fmt(settings.total)}</div></div>
+          <div className="sc"><div className="sc-lbl">Total Spent</div><div className="sc-val">{fmt(ts)}</div><div className="sc-sub"> of{fmt(settings.total)}</div></div>
           <div className="sc"><div className="sc-lbl">Remaining</div><div className="sc-val" style={{ color: bal >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmt(bal)}</div><div className="sc-sub">{dLeft} days left</div></div>
-          <div className="sc"><div className="sc-lbl">Avg / Active day</div><div className="sc-val">{fmt(avg)}</div><div className="sc-sub">Budget{fmt(bpd)}/Day</div></div>
-          <div className="sc"><div className="sc-lbl">Logged Meals</div><div className="sc-val">{txSp.length}</div><div className="sc-sub">Transactions</div></div>
+          <div className="sc"><div className="sc-lbl">Avg / Active day</div><div className="sc-val">{fmt(avg)}</div><div className="sc-sub"> Budget{fmt(bpd)}/Day</div></div>
+          <div className="sc"><div className="sc-lbl">Logged Meals</div><div className="sc-val">{txSp.length}</div><div className="sc-sub"> Transactions</div></div>
         </div>
         <div className="card">
           <div className="sec-hdr"><span className="sec-title">Weekly Spending</span></div>
