@@ -129,6 +129,19 @@ export function useStore(): Store {
     return () => { active = false; sub.subscription.unsubscribe(); };
   }, [mode, hydrate]);
 
+  // Surface OAuth errors that come back in the redirect URL (e.g. provider not
+  // enabled, access denied) instead of failing silently, then clean the URL.
+  useEffect(() => {
+    if (mode !== 'cloud') return;
+    const q = new URLSearchParams(window.location.search);
+    const h = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const err = q.get('error_description') || h.get('error_description') || q.get('error') || h.get('error');
+    if (err) {
+      setSyncError(err.replace(/\+/g, ' '));
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [mode]);
+
   /* ---------------- auth actions ---------------- */
   const signInEmail = useCallback(async (e: string, pw: string): Promise<AuthResult> => {
     if (mode === 'local') { setAuthed(true); setEmail(e); return {}; }
