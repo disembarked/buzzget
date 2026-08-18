@@ -1,0 +1,25 @@
+node_modules
+dist
+dist-ssr
+*.local
+
+# env / secrets — never commit these
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# logs
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# editor / OS
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Claude Code local config
+.claude/

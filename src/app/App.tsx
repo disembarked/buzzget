@@ -1,29 +1,32 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { useStore, type Preset, type Tx } from './useStore';
 
-type Tab = 'wallet' | 'stats' | 'settings';
-type View = 'daily' | 'weekly';
-type TxType = 'spend' | 'add';
-interface Tx { id: string; type: TxType; amount: number; note: string; date: string; ts: number; }
-interface Preset { id: string; name: string; amount: number; }
-interface Settings { total: number; startDate: string; endDate: string; semName: string; }
+type Tab = 'wallet' | 'stats' | 'ledger' | 'settings';
+type RangeId = '7' | '30' | 'sem' | 'all' | 'custom';
 interface Brk { name: string; s: string; e: string; }
 interface Sem { name: string; start: string; end: string; }
 
+/* Georgia Tech academic calendar — registrar.gatech.edu (Fall 2026+ from the
+   official Five-Term calendar; 2025-26 secondary breaks are best-known/tentative) */
 const GT_BREAKS: Brk[] = [
-  { name: 'Labor Day',    s: '2025-09-01', e: '2025-09-01' },
-  { name: 'Fall Break',   s: '2025-10-06', e: '2025-10-07' },
-  { name: 'Thanksgiving', s: '2025-11-26', e: '2025-11-28' },
-  { name: 'Winter Break', s: '2025-12-14', e: '2026-01-11' },
-  { name: 'MLK Day',      s: '2026-01-19', e: '2026-01-19' },
-  { name: 'Spring Break', s: '2026-03-23', e: '2026-03-27' },
-  { name: 'Labor Day',    s: '2026-09-07', e: '2026-09-07' },
-  { name: 'Fall Break',   s: '2026-10-05', e: '2026-10-06' },
-  { name: 'Thanksgiving', s: '2026-11-24', e: '2026-11-27' },
-  { name: 'Winter Break', s: '2026-12-18', e: '2027-01-10' },
+  { name: 'Labor Day',       s: '2025-09-01', e: '2025-09-01' },
+  { name: 'Fall Recess',     s: '2025-10-13', e: '2025-10-14' },
+  { name: 'Thanksgiving',    s: '2025-11-26', e: '2025-11-28' },
+  { name: 'Winter Break',    s: '2025-12-14', e: '2026-01-11' },
+  { name: 'MLK Day',         s: '2026-01-19', e: '2026-01-19' },
+  { name: 'Spring Break',    s: '2026-03-16', e: '2026-03-20' },
+  { name: 'Memorial Day',    s: '2026-05-25', e: '2026-05-25' },
+  { name: 'Juneteenth',      s: '2026-06-19', e: '2026-06-19' },
+  { name: 'Independence Day',s: '2026-07-02', e: '2026-07-03' },
+  { name: 'Labor Day',       s: '2026-09-07', e: '2026-09-07' },
+  { name: 'Thanksgiving',    s: '2026-11-25', e: '2026-11-27' },
+  { name: 'Winter Break',    s: '2026-12-18', e: '2027-01-10' },
+  { name: 'MLK Day',         s: '2027-01-18', e: '2027-01-18' },
+  { name: 'Spring Break',    s: '2027-03-22', e: '2027-03-26' },
 ];
 const GT_SEMS: Sem[] = [
   { name: 'Fall 2025',   start: '2025-08-18', end: '2025-12-13' },
-  { name: 'Spring 2026', start: '2026-01-12', end: '2026-05-08' },
+  { name: 'Spring 2026', start: '2026-01-12', end: '2026-05-07' },
   { name: 'Summer 2026', start: '2026-05-18', end: '2026-07-31' },
   { name: 'Fall 2026',   start: '2026-08-24', end: '2026-12-17' },
   { name: 'Spring 2027', start: '2027-01-11', end: '2027-05-07' },
@@ -36,509 +39,649 @@ const isBreak = (s: string) => GT_BREAKS.some(b => s >= b.s && s <= b.e);
 const curBreak = () => { const s = ds(tod()); return GT_BREAKS.find(b => s >= b.s && s <= b.e) || null; };
 const nxtBreak = () => { const s = ds(tod()); return GT_BREAKS.find(b => b.s > s) || null; };
 const semForDate = (s: string) => GT_SEMS.find(x => s >= x.start && s <= x.end) || null;
-const countActive = (a: string, b: string) => { let c = 0, d = pd(a), e = pd(b); while (d <= e) { if (!isBreak(ds(d))) c++; d.setDate(d.getDate() + 1); } return Math.max(c, 1); };
-
-const LS = {
-  get<T>(k: string, d: T): T { try { const v = localStorage.getItem(k); return v != null ? JSON.parse(v) : d; } catch { return d; } },
-  set(k: string, v: unknown) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
-};
-
-const DEFAULT_PRESETS: Preset[] = [
-  { id: '1', name: 'Breakfast', amount: 8 },
-  { id: '2', name: 'Lunch', amount: 12 },
-  { id: '3', name: 'Dinner', amount: 15 },
-  { id: '4', name: 'Snack', amount: 5 },
-];
-
-function DateField({ value, onChange, placeholder = 'Pick a date' }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
-  const [open, setOpen] = useState(false);
-  const [view, setView] = useState<Date>(() => value ? pd(value) : tod());
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => { if (value) setView(pd(value)); }, [value]);
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => { if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [open]);
-
-  const year = view.getFullYear(), month = view.getMonth();
-  const first = new Date(year, month, 1);
-  const startOffset = first.getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const daysInPrev = new Date(year, month, 0).getDate();
-  const cells: { d: number; m: number; y: number; muted: boolean }[] = [];
-  for (let i = startOffset - 1; i >= 0; i--) cells.push({ d: daysInPrev - i, m: month - 1, y: year, muted: true });
-  for (let d = 1; d <= daysInMonth; d++) cells.push({ d, m: month, y: year, muted: false });
-  while (cells.length % 7 !== 0 || cells.length < 42) cells.push({ d: cells.length - daysInMonth - startOffset + 1, m: month + 1, y: year, muted: true });
-
-  const todayStr = ds(tod());
-  const dow = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-
-  return (
-    <div className="df" ref={wrapRef}>
-      <button type="button" className={`df-trigger ${open ? 'open' : ''}`} onClick={() => setOpen(o => !o)}>
-        <span className={`df-val ${value ? '' : 'empty'}`}>{value ? pd(value).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : placeholder}</span>
-        <i className="ti ti-calendar" />
-      </button>
-      {open && (
-        <div className="cal">
-          <div className="cal-hdr">
-            <button type="button" className="cal-nav" onClick={() => setView(new Date(year, month - 1, 1))}><i className="ti ti-chevron-left" /></button>
-            <div className="cal-title">{view.toLocaleDateString([], { month: 'long', year: 'numeric' })}</div>
-            <button type="button" className="cal-nav" onClick={() => setView(new Date(year, month + 1, 1))}><i className="ti ti-chevron-right" /></button>
-          </div>
-          <div className="cal-grid">
-            {dow.map((d, i) => <div key={i} className="cal-dow">{d}</div>)}
-            {cells.map((c, i) => {
-              const dt = new Date(c.y, c.m, c.d); dt.setHours(0, 0, 0, 0);
-              const dstr = ds(dt);
-              const sel = value === dstr;
-              const isToday = todayStr === dstr;
-              return (
-                <button key={i} type="button" className={`cal-cell ${c.muted ? 'muted' : ''} ${isToday ? 'today' : ''} ${sel ? 'sel' : ''}`} onClick={() => { onChange(dstr); setOpen(false); }}>
-                  {c.d}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+const countActive = (a: string, b: string) => { let c = 0; const d = pd(a), e = pd(b); while (d <= e) { if (!isBreak(ds(d))) c++; d.setDate(d.getDate() + 1); } return Math.max(c, 1); };
 
 const fmt = (n: number) => '$' + Math.abs(n).toFixed(2);
+const fmtSigned = (n: number) => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
 const fmtT = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const mdy = (s: string) => pd(s).toLocaleDateString([], { month: 'short', day: 'numeric' });
 const fmtDL = (s: string) => {
   const d = pd(s), t = tod();
   if (s === ds(t)) return 'Today';
   const y = new Date(t); y.setDate(y.getDate() - 1);
   if (s === ds(y)) return 'Yesterday';
-  return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
-};
-const wkLabel = (s: string) => {
-  const d = pd(s); const ws = new Date(d); ws.setDate(d.getDate() - d.getDay());
-  const we = new Date(ws); we.setDate(ws.getDate() + 6);
-  return ws.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' – ' + we.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
 };
 
+const WELCOMES =['Welcome', 'Chào mừng', '환영합니다', 'Bienvenido', 'Bienvenue', 'Willkommen'];
+
+const NAV: [Tab, string, string][] = [
+  ['wallet', 'ti-wallet', 'Wallet'],
+  ['stats', 'ti-chart-histogram', 'Stats'],
+  ['ledger', 'ti-list-details', 'Ledger'],
+  ['settings', 'ti-adjustments-horizontal', 'Settings'],
+];
+
 export default function App() {
+  const store = useStore();
+  const { settings, tx, presets } = store;
+
   const [tab, setTab] = useState<Tab>('wallet');
-  const [view, setView] = useState<View>('daily');
-  const [selDate, setSelDate] = useState<string>(() => ds(tod()));
-  const [settings, setSettings] = useState<Settings>(() => LS.get<Settings>('bz4_s', { total: 0, startDate: '', endDate: '', semName: '' }));
-  const [tx, setTx] = useState<Tx[]>(() => LS.get<Tx[]>('bz4_tx', []));
-  const [presets, setPresets] = useState<Preset[]>(() => LS.get<Preset[]>('bz4_p', DEFAULT_PRESETS));
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err'; show: boolean }>({ msg: '', type: 'ok', show: false });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => LS.set('bz4_s', settings), [settings]);
-  useEffect(() => LS.set('bz4_tx', tx), [tx]);
-  useEffect(() => LS.set('bz4_p', presets), [presets]);
+  // form state
+  const [sNote, setSNote] = useState(''); const [sAmt, setSAmt] = useState('');
+  const [aAmt, setAAmt] = useState('');
+  const [pName, setPName] = useState(''); const [pAmt, setPAmt] = useState('');
+  const [cfgTotal, setCfgTotal] = useState<string>('');
+  // keep the settings-form total in sync when the profile loads/saves
+  useEffect(() => { setCfgTotal(settings.total ? String(settings.total) : ''); }, [settings.total]);
+
+  // ledger state
+  const [range, setRange] = useState<RangeId>('30');
+  const [rangeStartS, setRangeStartS] = useState('');
+  const [rangeEndS, setRangeEndS] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editNote, setEditNote] = useState(''); const [editAmt, setEditAmt] = useState('');
+
+  // rotating welcome word
+  const [welIdx, setWelIdx] = useState(0);
+
+  // auth form state (email/password + sign in vs sign up)
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPw, setAuthPw] = useState('');
+
+  const isSetup = settings.total > 0 && !!settings.startDate && !!settings.endDate;
+  const isWelcome = !isSetup && tab === 'wallet';
+
+  useEffect(() => {
+    if (!isWelcome) return;
+    const id = setInterval(() => setWelIdx(i => (i + 1) % WELCOMES.length), 2200);
+    return () => clearInterval(id);
+  }, [isWelcome]);
 
   const showToast = (msg: string, type: 'ok' | 'err' = 'ok') => {
     setToast({ msg, type, show: true });
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(t => ({ ...t, show: false })), 2500);
+    toastTimer.current = setTimeout(() => setToast(t => ({ ...t, show: false })), 2400);
   };
 
-  const isSetup = settings.total > 0 && settings.startDate && settings.endDate;
-  const tSpent = useMemo(() => tx.filter(t => t.type === 'spend').reduce((a, t) => a + t.amount, 0), [tx]);
-  const tAdded = useMemo(() => tx.filter(t => t.type === 'add').reduce((a, t) => a + t.amount, 0), [tx]);
-  const remBal = settings.total - tSpent + tAdded;
-  const bpd = isSetup ? settings.total / countActive(settings.startDate, settings.endDate) : 0;
-  const elapsedActive = isSetup ? (pd(settings.startDate) > tod() ? 0 : countActive(settings.startDate, ds(tod()))) : 0;
-  const leftActive = isSetup ? (tod() > pd(settings.endDate) ? 0 : countActive(ds(tod()), settings.endDate)) : 0;
-  const aheadBy = isSetup ? bpd * elapsedActive - tSpent : 0;
-  const spentOn = (s: string) => tx.filter(t => t.type === 'spend' && t.date === s).reduce((a, t) => a + t.amount, 0);
-  const txOn = (s: string) => tx.filter(t => t.date === s).sort((a, b) => b.ts - a.ts);
-  const pct = settings.total > 0 ? Math.min(100, (tSpent / settings.total) * 100) : 0;
+  const go = (t: Tab) => { setTab(t); setEditingId(null); };
 
-  const activeSemName = settings.semName || semForDate(ds(tod()))?.name || '';
+  // surface background sync errors from the store as a toast
+  useEffect(() => {
+    if (store.syncError) { showToast(store.syncError, 'err'); store.ackError(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.syncError]);
 
-  const shiftDate = (n: number) => {
-    const dt = pd(selDate);
-    if (view === 'daily') dt.setDate(dt.getDate() + n);
-    else dt.setDate(dt.getDate() + n * 7);
-    setSelDate(ds(dt));
+  /* ---------------- auth ---------------- */
+  const acctName = (store.email.split('@')[0] || 'user').replace(/[._]/g, ' ');
+  const acctInitials = acctName.split(' ').filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || 'U';
+  const doSignIn = async () => {
+    const email = authEmail.trim();
+    if (!email) { showToast('Enter your email', 'err'); return; }
+    if (store.mode === 'cloud' && authPw.length < 6) { showToast('Password must be at least 6 characters', 'err'); return; }
+    const res = authMode === 'signin' ? await store.signInEmail(email, authPw) : await store.signUpEmail(email, authPw);
+    if (res.error) { showToast(res.error, 'err'); return; }
+    if (res.info) { showToast(res.info); setAuthMode('signin'); return; }
+    if (store.mode === 'local') showToast(authMode === 'signin' ? 'Signed in' : 'Account created');
   };
+  const doGoogle = async () => { const res = await store.signInGoogle(); if (res.error) showToast(res.error, 'err'); };
+  const doSignOut = async () => { await store.signOut(); setAuthEmail(''); setAuthPw(''); setTab('wallet'); };
 
-  const addTx = (type: TxType, amount: number, note: string) => {
-    const now = new Date();
-    setTx(prev => [...prev, {
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-      type, amount: parseFloat(amount.toFixed(2)), note, date: ds(now), ts: now.getTime(),
-    }]);
+  /* ---------------- derived values ---------------- */
+  const v = useMemo(() => {
+    const set = settings;
+    const setup = set.total > 0 && !!set.startDate && !!set.endDate;
+    const todayS = ds(tod());
+
+    const tSpent = tx.filter(t => t.type === 'spend').reduce((a, t) => a + t.amount, 0);
+    const tAdded = tx.filter(t => t.type === 'add').reduce((a, t) => a + t.amount, 0);
+    const remBal = set.total - tSpent + tAdded;
+    const bpd = setup ? set.total / countActive(set.startDate, set.endDate) : 0;
+    const elapsed = setup ? (pd(set.startDate) > tod() ? 0 : countActive(set.startDate, todayS)) : 0;
+    const leftActive = setup ? (tod() > pd(set.endDate) ? 0 : countActive(todayS, set.endDate)) : 0;
+    const aheadBy = setup ? bpd * elapsed - tSpent : 0;
+    const spentOn = (s: string) => tx.filter(t => t.type === 'spend' && t.date === s).reduce((a, t) => a + t.amount, 0);
+    const pct = set.total > 0 ? Math.min(100, (tSpent / set.total) * 100) : 0;
+    const avg = elapsed > 0 ? tSpent / elapsed : 0;
+
+    // 7-day chart
+    const chartDays: { day: string; spent: number; isToday: boolean; brk: boolean }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(tod()); d.setDate(d.getDate() - i); const s = ds(d);
+      chartDays.push({ day: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][d.getDay()], spent: spentOn(s), isToday: s === todayS, brk: isBreak(s) });
+    }
+    const maxSp = Math.max(...chartDays.map(c => c.spent), 1);
+    const chart = chartDays.map(c => ({
+      day: c.day,
+      valStr: c.spent > 0 ? '$' + Math.round(c.spent) : '',
+      h: (c.brk ? 4 : Math.round((c.spent / maxSp) * 110) + 3) + 'px',
+      fill: c.isToday ? 'var(--gold2)' : (c.brk ? 'var(--line)' : 'var(--line2)'),
+      dayColor: c.isToday ? 'var(--gold)' : 'var(--ink3)',
+      dayWeight: c.isToday ? 700 : 400,
+    }));
+
+    // today's transactions
+    const selTx = tx.filter(t => t.date === todayS).sort((a, b) => b.ts - a.ts).map(t => ({
+      id: t.id, note: t.note || 'No note', timeStr: fmtT(t.ts),
+      dot: t.type === 'spend' ? 'var(--neg)' : 'var(--pos)',
+      amtColor: t.type === 'spend' ? 'var(--ink)' : 'var(--pos)',
+      amtStr: (t.type === 'spend' ? '−' : '+') + fmt(t.amount),
+    }));
+
+    // safe-to-spend & run-out
+    const safeToday = leftActive > 0 ? remBal / leftActive : remBal;
+    let runOutStr = '—', runOutSub = 'at current pace';
+    if (remBal <= 0) { runOutStr = 'Depleted'; runOutSub = ''; }
+    else if (avg > 0.001) {
+      const need = remBal / avg; const d = new Date(tod()); let counted = 0, guard = 0;
+      while (counted < need && guard < 800) { d.setDate(d.getDate() + 1); if (!isBreak(ds(d))) counted++; guard++; }
+      if (setup && ds(d) > set.endDate) { runOutStr = 'Covers the term'; runOutSub = 'through ' + mdy(set.endDate); }
+      else { runOutStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' }); runOutSub = 'at current pace'; }
+    }
+
+    // stats
+    const txSp = tx.filter(t => t.type === 'spend');
+    const weeksRaw: { l: string; val: number; cur: boolean }[] = [];
+    for (let w = 3; w >= 0; w--) {
+      const ws = new Date(tod()); ws.setDate(ws.getDate() - ws.getDay() - w * 7);
+      const we = new Date(ws); we.setDate(we.getDate() + 6);
+      const sp = tx.filter(t => t.type === 'spend' && t.date >= ds(ws) && t.date <= ds(we)).reduce((a, t) => a + t.amount, 0);
+      const sameM = ws.getMonth() === we.getMonth();
+      const l = sameM
+        ? `${ws.toLocaleDateString([], { month: 'short', day: 'numeric' })}–${we.getDate()}`
+        : `${ws.toLocaleDateString([], { month: 'short', day: 'numeric' })}–${we.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+      weeksRaw.push({ l, val: sp, cur: w === 0 });
+    }
+    const maxW = Math.max(...weeksRaw.map(w => w.val), 1);
+    const weeks = weeksRaw.map(w => ({
+      l: w.l, vStr: '$' + Math.round(w.val),
+      h: Math.round((w.val / maxW) * 130) + 3 + 'px',
+      fill: w.cur ? 'var(--gold2)' : 'var(--line2)', color: w.cur ? 'var(--gold)' : 'var(--ink2)',
+    }));
+    const topExp = [...txSp].sort((a, b) => b.amount - a.amount).slice(0, 8).map(t => ({
+      id: t.id, note: t.note || 'No note', date: mdy(t.date), amtStr: '−' + fmt(t.amount),
+    }));
+    const breaks = GT_BREAKS.filter(b => b.e >= todayS).slice(0, 5).map(b => {
+      const active = todayS >= b.s && todayS <= b.e, past = b.e < todayS;
+      return {
+        name: b.name,
+        range: mdy(b.s) + (b.s !== b.e ? ' – ' + mdy(b.e) : ''),
+        badge: active ? 'Active' : past ? 'Past' : 'Upcoming',
+        badgeColor: active ? 'var(--gold)' : 'var(--ink3)',
+      };
+    });
+
+    const autoSem = semForDate(todayS) || GT_SEMS.find(s => s.start > todayS) || GT_SEMS[GT_SEMS.length - 1];
+    const activeSemName = set.semName || semForDate(todayS)?.name || autoSem.name;
+    const semRange = mdy((set.startDate || autoSem.start)) + ' – ' + mdy((set.endDate || autoSem.end));
+    const nb = nxtBreak(); const cb = curBreak();
+
+    // ledger — running balance (chronological over full history)
+    const chrono = [...tx].sort((a, b) => a.ts - b.ts);
+    let run = set.total; const balMap: Record<string, number> = {};
+    chrono.forEach(t => { run += (t.type === 'add' ? t.amount : -t.amount); balMap[t.id] = run; });
+
+    let rA: string, rB: string;
+    if (range === 'custom' && rangeStartS && rangeEndS) { rA = rangeStartS; rB = rangeEndS; }
+    else if (range === '7') { const d = new Date(tod()); d.setDate(d.getDate() - 6); rA = ds(d); rB = todayS; }
+    else if (range === '30') { const d = new Date(tod()); d.setDate(d.getDate() - 29); rA = ds(d); rB = todayS; }
+    else if (range === 'sem' && setup) { rA = set.startDate; rB = todayS < set.endDate ? todayS : set.endDate; }
+    else { const dates = tx.map(t => t.date).sort(); rA = dates[0] || todayS; rB = todayS; }
+    // guard against inverted custom bounds
+    if (rA > rB) { const t2 = rA; rA = rB; rB = t2; }
+
+    const filtered = tx.filter(t => t.date >= rA && t.date <= rB);
+    const fSpent = filtered.filter(t => t.type === 'spend').reduce((a, t) => a + t.amount, 0);
+    const byDay: Record<string, Tx[]> = {};
+    filtered.forEach(t => { (byDay[t.date] = byDay[t.date] || []).push(t); });
+    const ledgerDays = Object.keys(byDay).sort().reverse().map(dk => {
+      const rows = byDay[dk].slice().sort((a, b) => b.ts - a.ts);
+      const net = rows.reduce((a, t) => a + (t.type === 'add' ? t.amount : -t.amount), 0);
+      return {
+        key: dk, label: fmtDL(dk),
+        count: rows.length + (rows.length === 1 ? ' entry' : ' entries'),
+        subtotal: fmtSigned(net),
+        rows: rows.map(t => ({
+          id: t.id, timeStr: fmtT(t.ts), note: t.note || 'No note',
+          typeLabel: t.type === 'add' ? 'Add' : 'Spend',
+          typeColor: t.type === 'add' ? 'var(--pos)' : 'var(--ink3)',
+          amtColor: t.type === 'add' ? 'var(--pos)' : 'var(--ink)',
+          amtStr: (t.type === 'add' ? '+' : '−') + fmt(t.amount),
+          balStr: fmt(balMap[t.id]),
+        })),
+      };
+    });
+
+    return {
+      todayS, setup, remBal, tSpent, bpd, leftActive, aheadBy, pct, avg,
+      todaySpent: spentOn(todayS), chart, chartPeak: '$' + Math.round(maxSp), selTx,
+      safeToday, runOutStr, runOutSub,
+      weeks, topExp, breaks, txSpCount: txSp.length,
+      activeSemName, semRange, autoSem, nb, cb,
+      ledgerDays, ledgerSummary: mdy(rA) + ' – ' + mdy(rB) + ' · ' + fmt(fSpent) + ' spent · ' + filtered.length + ' entries',
+      rA, rB, balMap, filtered,
+    };
+  }, [settings, tx, presets, range, rangeStartS, rangeEndS]);
+
+  /* ---------------- actions ---------------- */
+  const delTx = (id: string) => { store.removeTx(id); setEditingId(null); showToast('Removed'); };
+
+  const logPreset = (p: Preset) => {
+    if (p.amount > v.remBal + 0.001) { showToast(`Only ${fmt(v.remBal)} left`, 'err'); return; }
+    store.addTx('spend', p.amount, p.name);
+    showToast(`${p.name} · ${fmt(p.amount)}`);
   };
-  const delTx = (id: string) => { setTx(prev => prev.filter(t => t.id !== id)); showToast('Removed', 'ok'); };
-
-  const logPreset = (id: string) => {
-    const p = presets.find(x => x.id === id); if (!p) return;
-    if (p.amount > remBal + 0.001) { showToast(`Only ${fmt(remBal)} remaining`, 'err'); return; }
-    addTx('spend', p.amount, p.name);
-    showToast(`${p.name} — ${fmt(p.amount)}`, 'ok');
-  };
-
-  const [sNote, setSNote] = useState(''); const [sAmt, setSAmt] = useState('');
-  const [aAmt, setAAmt] = useState('');
   const doSpend = () => {
     const amt = parseFloat(sAmt || '0');
     if (isNaN(amt) || amt <= 0) { showToast('Enter a valid amount', 'err'); return; }
-    if (amt > remBal + 0.001) { showToast(`Only ${fmt(remBal)} remaining`, 'err'); return; }
-    addTx('spend', amt, sNote.trim() || 'Dining');
-    showToast(`Logged ${fmt(amt)}`, 'ok');
-    setSNote(''); setSAmt('');
+    if (amt > v.remBal + 0.001) { showToast(`Only ${fmt(v.remBal)} left`, 'err'); return; }
+    store.addTx('spend', amt, sNote.trim() || 'Dining');
+    showToast(`Logged ${fmt(amt)}`); setSNote(''); setSAmt('');
   };
   const doAdd = () => {
     const amt = parseFloat(aAmt || '0');
     if (isNaN(amt) || amt <= 0) { showToast('Enter a valid amount', 'err'); return; }
-    addTx('add', amt, 'Funds added');
-    showToast(`${fmt(amt)} added`, 'ok');
-    setAAmt('');
+    store.addTx('add', amt, 'Funds added'); showToast(`${fmt(amt)} added`); setAAmt('');
   };
-
-  const autoSem = useMemo(() => {
-    const today = ds(tod());
-    return semForDate(today) || GT_SEMS.find(s => s.start > today) || GT_SEMS[GT_SEMS.length - 1];
-  }, []);
-
-  const [cfgTotal, setCfgTotal] = useState<string>(() => settings.total ? String(settings.total) : '');
-
   const saveSett = () => {
     const total = parseFloat(cfgTotal || '0');
     if (!total || total <= 0) { showToast('Enter a starting balance', 'err'); return; }
-    setSettings({ total, startDate: autoSem.start, endDate: autoSem.end, semName: autoSem.name });
-    setTab('wallet');
-    showToast(`Saved for ${autoSem.name}`, 'ok');
+    store.saveSettings({ total, startDate: v.autoSem.start, endDate: v.autoSem.end, semName: v.autoSem.name });
+    setTab('wallet'); showToast(`Saved for ${v.autoSem.name}`);
   };
-
-  const [pName, setPName] = useState(''); const [pAmt, setPAmt] = useState('');
   const addPreset = () => {
     const amt = parseFloat(pAmt || '0');
     if (!pName.trim() || isNaN(amt) || amt <= 0) { showToast('Name and amount required', 'err'); return; }
-    setPresets(prev => [...prev, { id: Date.now().toString(36), name: pName.trim(), amount: parseFloat(amt.toFixed(2)) }]);
-    showToast(`${pName.trim()} added`, 'ok');
-    setPName(''); setPAmt('');
+    store.addPreset(pName.trim(), amt);
+    showToast('Preset added'); setPName(''); setPAmt('');
   };
-  const delPreset = (id: string) => setPresets(prev => prev.filter(p => p.id !== id));
-
+  const delPreset = (id: string) => store.removePreset(id);
   const resetAll = () => {
     if (!confirm('Delete all data and reset settings?')) return;
-    setSettings({ total: 0, startDate: '', endDate: '', semName: '' });
-    setTx([]); setPresets(DEFAULT_PRESETS); setTab('wallet');
+    store.resetAll(); setCfgTotal(''); setTab('wallet');
+  };
+  const startEdit = (id: string, note: string, amount: number) => { setEditingId(id); setEditNote(note); setEditAmt(String(amount)); };
+  const saveEdit = () => {
+    const amt = parseFloat(editAmt || '0');
+    if (isNaN(amt) || amt <= 0) { showToast('Enter a valid amount', 'err'); return; }
+    const cur = tx.find(x => x.id === editingId);
+    store.updateTx(editingId as string, { note: editNote.trim() || cur?.note || '', amount: amt });
+    setEditingId(null); showToast('Updated');
+  };
+  const exportCSV = () => {
+    const rows: string[][] = [['Date', 'Time', 'Type', 'Note', 'Amount', 'Balance']];
+    v.filtered.slice().sort((a, b) => a.ts - b.ts).forEach(t => {
+      rows.push([t.date, fmtT(t.ts), t.type, '"' + (t.note || '').replace(/"/g, '""') + '"',
+        (t.type === 'add' ? '' : '-') + t.amount.toFixed(2), (v.balMap[t.id] ?? 0).toFixed(2)]);
+    });
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'buzzget-ledger.csv'; a.click();
+    URL.revokeObjectURL(url); showToast('CSV exported');
   };
 
-  const WELCOMES = ['Welcome', 'Chào mừng', '환영합니다', 'Bienvenido', 'Bienvenue', 'Bem-vindo', 'خوش آمدید', 'स्वागत है', 'ਜੀ ਆਇਆਂ ਨੂੰ', 'સ્વાગત છે',
-                    '欢迎', 'Willkommen'];
-  const [welIdx, setWelIdx] = useState(0);
-  const [welAnim, setWelAnim] = useState(true);
-  useEffect(() => {
-    if (isSetup || tab !== 'wallet') return;
-    const id = setInterval(() => {
-      setWelAnim(false);
-      setTimeout(() => {
-        setWelIdx(i => (i + 1) % WELCOMES.length);
-        setWelAnim(true);
-      }, 280);
-    }, 2200);
-    return () => clearInterval(id);
-  }, [isSetup, tab]);
-
-  const Welcome = () => (
-    <div className="wel">
-      <div className="wel-title-wrap">
-        <div key={welIdx} className={`wel-title ${welAnim ? 'in' : 'out'}`}>{WELCOMES[welIdx]}</div>
+  /* ---------------- screens ---------------- */
+  const Auth = () => (
+    <div className="bz-auth">
+      <div className="brand"><img src="/bee-wallet.png" alt="" /><div className="nm serif">BuzzGet</div></div>
+      <h1 className="serif">{authMode === 'signin' ? 'Welcome back' : 'Create your account'}</h1>
+      <div className="sub">{authMode === 'signin'
+        ? 'Sign in to track your dining dollars.'
+        : 'One balance, paced across the whole semester.'}</div>
+      {store.mode === 'cloud' && <>
+        <button className="bz-google" onClick={doGoogle}><i className="ti ti-brand-google" style={{ fontSize: 16 }} />Continue with Google</button>
+        <div className="bz-or">OR</div>
+      </>}
+      <label>Email</label>
+      <input className="bz-input" style={{ marginBottom: 13 }} type="email" autoComplete="email" placeholder="you@gatech.edu" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
+      <label>Password</label>
+      <input className="bz-input" style={{ marginBottom: 20 }} type="password" autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'} placeholder="••••••••" value={authPw} onChange={e => setAuthPw(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') doSignIn(); }} />
+      <button className="bz-btn bz-btn-primary" style={{ width: '100%' }} disabled={store.authBusy} onClick={doSignIn}>{store.authBusy ? 'Please wait…' : authMode === 'signin' ? 'Sign in' : 'Create account'}</button>
+      <div className="switch">
+        {authMode === 'signin' ? 'New to BuzzGet? ' : 'Already have an account? '}
+        <a onClick={() => setAuthMode(m => m === 'signin' ? 'signup' : 'signin')} style={{ fontWeight: 600 }}>
+          {authMode === 'signin' ? 'Create one' : 'Sign in'}
+        </a>
       </div>
-      <button className="btn btn-gold" onClick={() => setTab('settings')}><i className="ti" />Start Tracking</button>
-      <div className="wel-body">Visualize and Track your Dining Dollars</div>
     </div>
   );
 
-  const Wallet = () => {
-    const bal = remBal, ah = aheadBy, spent = spentOn(ds(tod())), rate = bpd;
-    const dLeft = leftActive;
-    const prog = pct;
-    const isBrk = isBreak(selDate);
-    const isToday = selDate === ds(tod());
-    const selTx = txOn(selDate);
-    const cb = curBreak(), nb = nxtBreak();
-    const chartDays: { day: string; spent: number; isToday: boolean; brk: boolean }[] = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(tod()); d.setDate(d.getDate() - i);
-      const s = ds(d);
-      chartDays.push({ day: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][d.getDay()], spent: spentOn(s), isToday: s === ds(tod()), brk: isBreak(s) });
-    }
-    const maxSp = Math.max(...chartDays.map(c => c.spent), 1);
-
-    return (
-      <>
-        {cb && (
-          <div className="break-banner">
-            <i className="ti ti-calendar-off" aria-hidden="true" />
-            <div>
-              <div className="break-title">{cb.name}</div>
-              <div className="break-sub">Break day — not counted in calculation. Resumes {new Date(pd(cb.e).getTime() + 86400000).toLocaleDateString([], { month: 'short', day: 'numeric' })}.</div>
-            </div>
-          </div>
-        )}
-        {!cb && nb && (
-          <div className="break-banner" style={{ background: 'var(--gold-bg)', borderColor: 'var(--gold-bd)' }}>
-            <i className="ti ti-calendar-event" aria-hidden="true" style={{ color: 'var(--gold)' }} />
-            <div>
-              <div className="break-title" style={{ color: 'var(--gold)' }}>{nb.name} — {pd(nb.s).toLocaleDateString([], { month: 'short', day: 'numeric' })}</div>
-              <div className="break-sub">Next Academic Break</div>
-            </div>
-          </div>
-        )}
-        <div className="dtoggle">
-          <button className={`dtoggle-btn ${view === 'daily' ? 'on' : ''}`} onClick={() => setView('daily')}><i className="ti ti-calendar-day" />Daily</button>
-          <button className={`dtoggle-btn ${view === 'weekly' ? 'on' : ''}`} onClick={() => setView('weekly')}><i className="ti ti-calendar-day" />Weekly</button>
-        </div>
-        <div className="dnav">
-          <button className="dnav-arrow" onClick={() => shiftDate(-1)}><i className="ti ti-chevron-left" /></button>
-          <div style={{ textAlign: 'center' }}>
-            <div className="dnav-date">{view === 'daily' ? fmtDL(selDate) : wkLabel(selDate)}</div>
-            <div className="dnav-sub">{view === 'daily' ? (isBrk ? 'Academic Break' : 'Active day') : 'Weekly view'}</div>
-          </div>
-          <button className="dnav-arrow" onClick={() => shiftDate(1)}><i className="ti ti-chevron-right" /></button>
-        </div>
-        {!isToday && (
-          <button className="jump-today" onClick={() => setSelDate(ds(tod()))}>
-            <i className="ti ti-arrow-back-up" />Jump to Today
-          </button>
-        )}
-        <div className="card">
-          <div className="bal-label">Remaining balance</div>
-          <div className={`bal-amount ${bal < 0 ? 'warn' : ''}`}>{fmt(bal)}</div>
-          <div className={`pace-pill ${ah >= 0 ? 'ok' : 'behind'}`}>
-            <i className={`ti ${ah >= 0 ? 'ti-trending-up' : 'ti-trending-down'}`} />
-            {fmt(Math.abs(ah))} {ah >= 0 ? 'Ahead' : 'Behind'}
-          </div>
-          <div className="stat-row">
-            <div className="stat"><div className="stat-lbl">Today</div><div className="stat-val r">{fmt(spent)}</div></div>
-            <div className="stat"><div className="stat-lbl">Daily Rate</div><div className="stat-val g">{fmt(rate)}</div></div>
-            <div className="stat"><div className="stat-lbl">Days Left</div><div className="stat-val">{dLeft}</div></div>
-          </div>
-          <div className="prog-wrap">
-            <div className="prog-labels"><span>Budget Used</span><span>{prog.toFixed(0)}%</span></div>
-            <div className="prog-track"><div className={`prog-fill ${prog > 90 ? 'danger' : ''}`} style={{ width: prog.toFixed(1) + '%' }} /></div>
-          </div>
-        </div>
-        <div className="card">
-          <div className="sec-hdr"><span className="sec-title">7-day Activity</span></div>
-          <div className="chart-wrap">
-            {(() => {
-              const order = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-              return [...chartDays].sort((a, b) => order.indexOf(a.day) - order.indexOf(b.day));
-            })().map((c, i) => (
-              <div key={i} className="bar-col">
-                <div className={`bar-fill ${c.isToday ? 'hi' : ''} ${c.brk ? 'brk' : ''}`} style={{ height: (c.brk ? 4 : Math.round((c.spent / maxSp) * 50) + 3) + 'px' }} />
-                <div className="bar-day" style={c.isToday ? { color: 'var(--gold)', fontWeight: 600 } : undefined}>{c.day}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-        {isToday && !isBrk && (
-          <>
-            <div className="sec-hdr" style={{ marginBottom: 7 }}><span className="sec-title">Quick Log</span></div>
-            <div className="presets-grid">
-              {presets.map(p => (
-                <button key={p.id} className="preset" onClick={() => logPreset(p.id)}>
-                  <div className="preset-name">{p.name}</div>
-                  <div className="preset-amt">{fmt(p.amount)}</div>
-                </button>
-              ))}
-            </div>
-            <div className="card">
-              <div className="sec-hdr"></div>
-              <div className="inp-row">
-                <div className="form-grp" style={{ flex: 1.3 }}><label className="form-lbl">Note</label><input className="inp" type="text" name="spend-note" placeholder="What did you eat?" value={sNote} onChange={e => setSNote(e.target.value)} style={{ background: 'rgba(0,0,0,0.18)', borderColor: 'var(--gold-bd)', color: 'var(--gold2)' }} /></div>
-                <div className="form-grp" style={{ flex: 0.8 }}><label className="form-lbl">Amount</label><input className="inp" type="number" placeholder="0.00" min="0" step="0.01" value={sAmt} onChange={e => setSAmt(e.target.value)} style={{ background: 'rgba(0,0,0,0.18)', borderColor: 'var(--gold-bd)', color: 'var(--gold2)' }} /></div>
-              </div>
-              <button className="btn btn-gold" onClick={doSpend}><i className="ti" />Log Spending</button>
-            </div>
-            <div className="card">
-              <div className="sec-hdr"></div>
-              <div className="form-grp"><input className="inp" type="number" placeholder="Add Funds" min="0" step="0.01" value={aAmt} onChange={e => setAAmt(e.target.value)} style={{ background: 'rgba(0,0,0,0.18)', borderColor: 'var(--gold-bd)', color: 'var(--gold2)' }}/></div>
-              <button className="btn btn-gold" onClick={doAdd}><i className="ti" />Add Funds</button>
-            </div>
-          </>
-        )}
-        <div className="card">
-          <div className="sec-hdr">
-            <span className="sec-title">{isToday ? 'Today' : 'Transactions'}</span>
-            <span style={{ fontSize: 10, color: 'var(--text3)' }}>{selTx.length} item{selTx.length !== 1 ? 's' : ''}</span>
-          </div>
-          <div className="tx-list">
-            {selTx.length === 0 ? (
-              <div className="tx-empty">{isToday ? (isBrk ? 'Break day — No transactions' : 'Nothing logged yet') : 'No transactions for this date'}</div>
-            ) : (
-              selTx.map(t => (
-                <div key={t.id} className="tx">
-                  <div className={`tx-ico ${t.type}`}><i className={`ti ti-${t.type === 'spend' ? 'arrow-down' : 'arrow-up'}`} /></div>
-                  <div className="tx-info"><div className="tx-note">{t.note || 'No note'}</div><div className="tx-time">{fmtT(t.ts)}</div></div>
-                  <div className={`tx-amt ${t.type}`}>{t.type === 'spend' ? '-' : '+'}{fmt(t.amount)}</div>
-                  <button className="tx-del" onClick={() => delTx(t.id)} title="Delete"><i className="ti ti-trash" /></button>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </>
-    );
-  };
-
-  const Stats = () => {
-    const bal = remBal, ts = tSpent, dLeft = leftActive;
-    const el = elapsedActive;
-    const avg = el > 0 ? ts / el : 0;
-    const txSp = tx.filter(t => t.type === 'spend');
-    const weeks: { l: string; v: number; cur: boolean }[] = [];
-    for (let w = 3; w >= 0; w--) {
-      const ws = new Date(tod()); ws.setHours(0, 0, 0, 0); ws.setDate(ws.getDate() - ws.getDay() - w * 7);
-      const we = new Date(ws); we.setDate(we.getDate() + 6);
-      const sp = tx.filter(t => t.type === 'spend' && t.date >= ds(ws) && t.date <= ds(we)).reduce((a, t) => a + t.amount, 0);
-      const sameMonth = ws.getMonth() === we.getMonth();
-      const l = sameMonth
-        ? `${ws.toLocaleDateString([], { month: 'short', day: 'numeric' })}–${we.getDate()}`
-        : `${ws.toLocaleDateString([], { month: 'short', day: 'numeric' })}–${we.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
-      weeks.push({ l, v: sp, cur: w === 0 });
-    }
-    const maxW = Math.max(...weeks.map(w => w.v), 1);
-
-    return (
-      <>
-        <div className="stats-grid">
-          <div className="sc"><div className="sc-lbl">Total Spent</div><div className="sc-val">{fmt(ts)}</div><div className="sc-sub"> of{fmt(settings.total)}</div></div>
-          <div className="sc"><div className="sc-lbl">Remaining</div><div className="sc-val" style={{ color: bal >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmt(bal)}</div><div className="sc-sub">{dLeft} days left</div></div>
-          <div className="sc"><div className="sc-lbl">Avg / Active day</div><div className="sc-val">{fmt(avg)}</div><div className="sc-sub"> Budget{fmt(bpd)}/Day</div></div>
-          <div className="sc"><div className="sc-lbl">Logged Meals</div><div className="sc-val">{txSp.length}</div><div className="sc-sub"> Transactions</div></div>
-        </div>
-        <div className="card">
-          <div className="sec-hdr"><span className="sec-title">Weekly Spending</span></div>
-          <div className="chart-wrap" style={{ height: 70 }}>
-            {weeks.map((w, i) => (
-              <div key={i} className="bar-col">
-                <div className={`bar-fill ${w.cur ? 'hi' : ''}`} style={{ height: Math.round((w.v / maxW) * 60) + 3 + 'px' }} />
-                <div className="bar-day" style={w.cur ? { color: 'var(--gold)', fontWeight: 600 } : undefined}>{w.l}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: 2 }}>
-            {weeks.map((w, i) => <div key={i} style={{ fontSize: 9.5, color: 'var(--text3)', textAlign: 'center' }}>{fmt(w.v)}</div>)}
-          </div>
-        </div>
-        {txSp.length > 0 && (
-          <div className="card">
-            <div className="sec-hdr"><span className="sec-title">Top Expenses</span></div>
-            <div className="tx-list">
-              {[...txSp].sort((a, b) => b.amount - a.amount).slice(0, 10).map(t => (
-                <div key={t.id} className="tx">
-                  <div className="tx-ico spend"><i className="ti ti-arrow-down" /></div>
-                  <div className="tx-info"><div className="tx-note">{t.note || 'No note'}</div><div className="tx-time">{t.date}</div></div>
-                  <div className="tx-amt spend">-{fmt(t.amount)}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        <div className="card">
-          <div className="sec-hdr"><span className="sec-title">Academic Breaks</span></div>
-          {GT_BREAKS.filter(b => b.e >= ds(tod())).slice(0, 6).map((b, i) => {
-            const s = ds(tod());
-            const active = s >= b.s && s <= b.e, past = b.e < s;
-            return (
-              <div key={i} className="sett-row">
-                <div>
-                  <div className="sett-lbl">{b.name}</div>
-                  <div className="sett-sub">{pd(b.s).toLocaleDateString([], { month: 'short', day: 'numeric' })}{b.s !== b.e ? ' – ' + pd(b.e).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}</div>
-                </div>
-                <span className={`badge ${active ? 'badge-active' : past ? 'badge-past' : 'badge-upcoming'}`}>{active ? 'Active' : past ? 'Past' : 'Upcoming'}</span>
-              </div>
-            );
-          })}
-        </div>
-      </>
-    );
-  };
-
-  const Settings = () => (
-    <>
-      <div className="card">
-        
-        <div className="form-grp"><label className="form-lbl">Starting Balance ($)</label>
-          <input className="inp" type="number" placeholder="e.g. 788" value={cfgTotal} onChange={e => setCfgTotal(e.target.value)} min="0" step="1" /></div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 13, padding: '8px 0', borderTop: '1px solid var(--border)' }}>
-          <input type="checkbox" id="cfg-auto" defaultChecked style={{ width: 14, height: 14 }} />
-          <label htmlFor="cfg-auto" style={{ fontSize: 12, cursor: 'pointer', color: 'var(--text2)' }}>Exclude Academic Breaks from Calculations</label>
-        </div>
-        <button className="btn btn-gold" onClick={saveSett}><i className="ti" />Save Settings</button>
-      </div>
-      <div className="card">
-        <div className="sec-hdr"><span className="sec-title">Current Semester</span></div>
-        <div className="sett-row">
-          <div>
-            <div className="sett-lbl">{autoSem.name}</div>
-            <div className="sett-sub">{pd(autoSem.start).toLocaleDateString([], { month: 'short', day: 'numeric' })} – {pd(autoSem.end).toLocaleDateString([], { month: 'short', day: 'numeric' })}</div>
-          </div>
-          <span className="badge badge-active">Auto</span>
-        </div>
-      </div>
-      <div className="card">
-        <div className="sec-hdr"><span className="sec-title">Meal Presets</span></div>
-        <div className="preset-list" style={presets.length > 5 ? { maxHeight: 220, overflowY: 'auto' } : undefined}>
-          {presets.map(p => (
-            <div key={p.id} className="sett-row">
-              <div><div className="sett-lbl">{p.name}</div><div className="sett-sub">{fmt(p.amount)}</div></div>
-              <button className="btn btn-danger btn-sm" onClick={() => delPreset(p.id)}><i className="ti ti-trash" /></button>
-            </div>
-          ))}
-        </div>
-        <div className="divider" />
-        <div className="inp-row">
-          <div className="form-grp" style={{ flex: 1.4 }}><input className="inp" type="text" placeholder="Name" autoComplete="off" value={pName} onChange={e => setPName(e.target.value)} style={{ background: 'rgba(0,0,0,0.18)', borderColor: 'var(--gold-bd)', color: 'var(--gold2)' }}/></div>
-          <div className="form-grp" style={{ flex: 0.8 }}><input className="inp" type="number" placeholder="$" min="0" step="0.01" value={pAmt} onChange={e => setPAmt(e.target.value)} style={{ background: 'rgba(0,0,0,0.18)', borderColor: 'var(--gold-bd)', color: 'var(--gold2)' }}/></div>
-        </div>
-        <button className="btn btn-gold" onClick={addPreset}><i className="ti" />Add Preset</button>
-      </div>
-      <div className="card">
-        <div className="sec-hdr"><span className="sec-title">Data</span></div>
-        <button className="btn btn-danger" onClick={resetAll}><i className="ti ti-trash" />Reset all data</button>
-      </div>
-    </>
+  const Welcome = () => (
+    <div className="bz-welcome">
+      <div className="word">{WELCOMES[welIdx]}</div>
+      <h2>Know exactly how far your dining dollars go.</h2>
+      <p>Set your starting balance once. BuzzGet paces it across the semester, skips academic breaks, and keeps a clean ledger of every meal.</p>
+      <button className="bz-btn bz-btn-primary" onClick={() => setTab('settings')}>Start tracking<i className="ti ti-arrow-right" /></button>
+    </div>
   );
 
-  const showWelcome = !isSetup && tab === 'wallet';
-  const navTabs: [Tab, string, string][] = [['wallet', 'ti-wallet', 'Wallet'], ['stats', 'ti-chart-bar', 'Stats'], ['settings', 'ti-settings', 'Settings']];
+  const Wallet = () => (
+    <div className="bz-wallet">
+      {v.cb ? (
+        <div className="bz-breakpill now"><i className="ti ti-calendar-off" />Break day · {v.cb.name}</div>
+      ) : v.nb ? (
+        <div className="bz-breakpill"><i className="ti ti-calendar-event" />Next break · {v.nb.name}, {mdy(v.nb.s)}</div>
+      ) : null}
+
+      <div className="bz-hero">
+        <div className="col">
+          <div className="bz-cap">Remaining balance</div>
+          <div className={`bz-bal serif ${v.remBal < 0 ? 'neg' : ''}`}>{fmt(v.remBal)}</div>
+          <div className="bz-pace" style={{ color: v.aheadBy >= 0 ? 'var(--pos)' : 'var(--neg)' }}>
+            <i className={`ti ${v.aheadBy >= 0 ? 'ti-trending-up' : 'ti-trending-down'}`} />
+            {fmt(Math.abs(v.aheadBy))} {v.aheadBy >= 0 ? 'ahead' : 'behind'} of pace
+          </div>
+        </div>
+        <div className="col secondary">
+          <div className="bz-cap">Spent today</div>
+          <div className="bz-metric">{fmt(v.todaySpent)}</div>
+          <div className="bz-sub">Budget {fmt(v.bpd)} / active day</div>
+        </div>
+        <div className="col secondary">
+          <div className="bz-cap">Days left</div>
+          <div className="bz-metric">{v.leftActive}</div>
+          <div className="bz-sub">{v.pct.toFixed(0)}% of budget used</div>
+        </div>
+      </div>
+      <div className="bz-progress"><div style={{ width: v.pct.toFixed(1) + '%' }} /></div>
+
+      <div className="bz-hero2">
+        <div className="col">
+          <div className="bz-cap">Safe to spend today</div>
+          <div className="big gold">{fmt(v.safeToday)}</div>
+          <div className="bz-sub">keeps you on pace</div>
+        </div>
+        <div className="col">
+          <div className="bz-cap">Funds last until</div>
+          <div className="big">{v.runOutStr}</div>
+          <div className="bz-sub">{v.runOutSub}</div>
+        </div>
+        <div className="col tertiary">
+          <div className="bz-cap">Avg / active day</div>
+          <div className="big">{fmt(v.avg)}</div>
+          <div className="bz-sub">vs. {fmt(v.bpd)} budget</div>
+        </div>
+      </div>
+
+      <div className="bz-cols">
+        <div className="left">
+          <div className="bz-sechdr"><div className="bz-eyebrow">Last 7 days</div><div className="bz-sub" style={{ marginTop: 0 }}>peak {v.chartPeak}</div></div>
+          <div className="bz-bars">
+            {v.chart.map((c, i) => (
+              <div key={i} className="bz-bar-col">
+                <div className="bz-bar-val">{c.valStr}</div>
+                <div className="bz-bar" style={{ background: c.fill, height: c.h }} />
+                <div className="bz-bar-day" style={{ color: c.dayColor, fontWeight: c.dayWeight }}>{c.day}</div>
+              </div>
+            ))}
+          </div>
+
+          {v.cb ? (
+            <div className="bz-empty" style={{ marginTop: 30 }}>Break day — spending isn't counted toward your pace.</div>
+          ) : (
+            <>
+              <div className="bz-sechdr" style={{ marginTop: 30 }}><div className="bz-eyebrow">Quick log</div></div>
+              <div className="bz-presets">
+                {presets.map(p => (
+                  <button key={p.id} className="bz-preset" onClick={() => logPreset(p)}>
+                    <div className="pn">{p.name}</div><div className="pa">{fmt(p.amount)}</div>
+                  </button>
+                ))}
+              </div>
+              <div className="bz-logrow">
+                <input className="bz-input" style={{ flex: 1.4 }} type="text" placeholder="Note — what did you eat?" value={sNote} onChange={e => setSNote(e.target.value)} />
+                <input className="bz-input" style={{ flex: 0.7 }} type="number" placeholder="0.00" value={sAmt} onChange={e => setSAmt(e.target.value)} />
+                <button className="bz-btn bz-btn-primary" style={{ padding: '0 18px' }} onClick={doSpend}>Log</button>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="right">
+          <div className="bz-sechdr"><div className="bz-eyebrow">Today</div><div className="bz-sub" style={{ marginTop: 0 }}>{v.selTx.length}{v.selTx.length === 1 ? ' entry' : ' entries'}</div></div>
+          {v.selTx.length === 0 && <div className="bz-empty">Nothing logged yet today.</div>}
+          {v.selTx.map(t => (
+            <div key={t.id} className="bz-txrow">
+              <div className="bz-dot" style={{ background: t.dot }} />
+              <div className="info"><div className="note">{t.note}</div><div className="time">{t.timeStr}</div></div>
+              <div className="amt" style={{ color: t.amtColor }}>{t.amtStr}</div>
+              <button className="bz-iconbtn" onClick={() => delTx(t.id)} title="Delete"><i className="ti ti-x" style={{ fontSize: 13 }} /></button>
+            </div>
+          ))}
+          <div className="bz-logrow">
+            <input className="bz-input" style={{ flex: 1 }} type="number" placeholder="Add funds" value={aAmt} onChange={e => setAAmt(e.target.value)} />
+            <button className="bz-btn bz-btn-ghost" style={{ padding: '0 16px' }} onClick={doAdd}>Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const Stats = () => (
+    <div>
+      <h1 className="bz-h1 serif">Statistics</h1>
+      <div className="bz-statgrid">
+        {[
+          { l: 'Total spent', val: fmt(v.tSpent), s: 'of ' + fmt(settings.total), color: 'var(--ink)' },
+          { l: 'Remaining', val: fmt(v.remBal), s: v.leftActive + ' days left', color: v.remBal >= 0 ? 'var(--pos)' : 'var(--neg)' },
+          { l: 'Avg / active day', val: fmt(v.avg), s: 'budget ' + fmt(v.bpd), color: 'var(--ink)' },
+          { l: 'Logged meals', val: String(v.txSpCount), s: 'transactions', color: 'var(--ink)' },
+        ].map((s, i) => (
+          <div key={i} className="bz-statcell"><div className="l">{s.l}</div><div className="v" style={{ color: s.color }}>{s.val}</div><div className="s">{s.s}</div></div>
+        ))}
+      </div>
+      <div className="bz-cols bz-stats-cols" style={{ gridTemplateColumns: '1.3fr 1fr', marginTop: 34 }}>
+        <div className="left">
+          <div className="bz-eyebrow" style={{ marginBottom: 18, display: 'block' }}>Weekly spending</div>
+          <div className="bz-bars" style={{ height: 150 }}>
+            {v.weeks.map((w, i) => (
+              <div key={i} className="bz-bar-col">
+                <div className="bz-bar-val" style={{ fontWeight: 600, color: w.color }}>{w.vStr}</div>
+                <div className="bz-bar" style={{ background: w.fill, height: w.h, borderRadius: '6px 6px 0 0' }} />
+                <div className="bz-bar-day">{w.l}</div>
+              </div>
+            ))}
+          </div>
+          <div className="bz-eyebrow" style={{ margin: '34px 0 8px', display: 'block' }}>Academic breaks</div>
+          {v.breaks.map((b, i) => (
+            <div key={i} className="bz-breakrow"><div><div className="nm">{b.name}</div><div className="rg">{b.range}</div></div><span className="bd" style={{ color: b.badgeColor }}>{b.badge}</span></div>
+          ))}
+        </div>
+        <div className="right">
+          <div className="bz-eyebrow" style={{ marginBottom: 14, display: 'block' }}>Top expenses</div>
+          {v.topExp.length === 0 && <div className="bz-empty">No spending logged yet.</div>}
+          {v.topExp.map(t => (
+            <div key={t.id} className="bz-txrow"><div className="info"><div className="note">{t.note}</div><div className="time">{t.date}</div></div><div className="amt" style={{ color: 'var(--neg)' }}>{t.amtStr}</div></div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  const RANGE_PRESETS: [RangeId, string][] = [['7', '7 days'], ['30', '30 days'], ['sem', 'Semester'], ['all', 'All']];
+  const Ledger = () => (
+    <div className="bz-ledger">
+      <div className="bz-ledger-head">
+        <div>
+          <h1 className="bz-h1 serif" style={{ marginBottom: 6 }}>Ledger</h1>
+          <div className="bz-sub" style={{ marginTop: 0 }}>{v.ledgerSummary}</div>
+        </div>
+        <button className="bz-btn bz-btn-ghost" style={{ padding: '9px 14px', fontSize: 12.5 }} onClick={exportCSV}><i className="ti ti-download" style={{ fontSize: 14 }} />Export CSV</button>
+      </div>
+      <div className="bz-chips">
+        {RANGE_PRESETS.map(([id, label]) => (
+          <button key={id} className={`bz-chip ${range === id ? 'on' : 'off'}`} onClick={() => setRange(id)}>{label}</button>
+        ))}
+        <div style={{ width: 1, height: 20, background: 'var(--line)', margin: '0 4px' }} />
+        <div className="bz-daterange">
+          <input className="bz-date" type="date" value={v.rA} onChange={e => { setRange('custom'); setRangeStartS(e.target.value); setRangeEndS(rangeEndS || v.rB); }} />
+          <span style={{ color: 'var(--ink3)', fontSize: 12 }}>to</span>
+          <input className="bz-date" type="date" value={v.rB} onChange={e => { setRange('custom'); setRangeEndS(e.target.value); setRangeStartS(rangeStartS || v.rA); }} />
+        </div>
+      </div>
+
+      <div className="bz-ledger-cols bz-ledger-head-row">
+        <div>Date / Time</div><div>Note</div><div>Type</div><div style={{ textAlign: 'right' }}>Amount</div><div style={{ textAlign: 'right' }}>Balance</div>
+      </div>
+      <div className="bz-ledger-body bz-scroll">
+        {v.ledgerDays.length === 0 && <div className="bz-empty" style={{ padding: '26px 4px' }}>No transactions in this range.</div>}
+        {v.ledgerDays.map(d => (
+          <div key={d.key}>
+            <div className="bz-day-hdr"><div className="d">{d.label}</div><div className="s">{d.subtotal} · {d.count}</div></div>
+            {d.rows.map(t => {
+              const editing = editingId === t.id;
+              return (
+                <div key={t.id} className="bz-ledger-cols bz-ledger-row" style={{ background: editing ? 'var(--gold-soft)' : 'transparent' }}>
+                  <div className="tcell">{t.timeStr}</div>
+                  {editing ? (
+                    <div className="bz-edit">
+                      <input className="en" type="text" value={editNote} onChange={e => setEditNote(e.target.value)} />
+                      <input className="ea" type="number" value={editAmt} onChange={e => setEditAmt(e.target.value)} />
+                      <button className="bz-mini-btn save" onClick={saveEdit}>Save</button>
+                      <button className="bz-mini-btn cancel" onClick={() => setEditingId(null)}>Cancel</button>
+                      <button className="bz-iconbtn" style={{ color: 'var(--neg)' }} onClick={() => delTx(t.id)}><i className="ti ti-trash" style={{ fontSize: 14 }} /></button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="ncell">{t.note}</div>
+                      <div className="tycell"><span style={{ color: t.typeColor }}>{t.typeLabel}</span></div>
+                      <div className="acell" style={{ color: t.amtColor }}>{t.amtStr}</div>
+                      <div className="bcell">{t.balStr}<button className="bz-iconbtn" onClick={() => startEdit(t.id, t.note === 'No note' ? '' : t.note, parseFloat(t.amtStr.replace(/[^\d.]/g, '')))}><i className="ti ti-pencil" style={{ fontSize: 13 }} /></button></div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const SettingsScreen = () => (
+    <div className="bz-settings">
+      <h1 className="bz-h1 serif">Settings</h1>
+      <div className="bz-acct-row">
+        <div className="bz-avatar">{acctInitials}</div>
+        <div className="meta"><div className="n">{acctName}</div><div className="e">{store.email}</div></div>
+        <button className="bz-btn bz-btn-ghost" style={{ padding: '7px 12px', fontSize: 12 }} onClick={doSignOut}>Sign out</button>
+      </div>
+      <div className="bz-settings-grid">
+        <div className="left">
+          <div className="bz-eyebrow" style={{ marginBottom: 12, display: 'block' }}>Balance</div>
+          <label className="bz-field-lbl">Starting balance ($)</label>
+          <input className="bz-input" style={{ marginBottom: 14 }} type="number" placeholder="e.g. 788" value={cfgTotal} onChange={e => setCfgTotal(e.target.value)} />
+          <label className="bz-check"><input type="checkbox" defaultChecked />Exclude academic breaks from pacing</label>
+          <button className="bz-btn bz-btn-primary" onClick={saveSett}>Save settings</button>
+          <div className="bz-eyebrow" style={{ margin: '34px 0 10px', display: 'block' }}>Data</div>
+          <button className="bz-btn bz-btn-danger" onClick={resetAll}><i className="ti ti-trash" style={{ fontSize: 14 }} />Reset all data</button>
+        </div>
+        <div className="right">
+          <div className="bz-eyebrow" style={{ marginBottom: 12, display: 'block' }}>Meal presets</div>
+          {presets.map(p => (
+            <div key={p.id} className="bz-preset-line">
+              <div><span className="nm">{p.name}</span><span className="am">{fmt(p.amount)}</span></div>
+              <button className="bz-iconbtn" onClick={() => delPreset(p.id)}><i className="ti ti-x" style={{ fontSize: 14 }} /></button>
+            </div>
+          ))}
+          <div className="bz-addrow">
+            <input className="bz-input" style={{ flex: 1.4, padding: '9px 11px', fontSize: 12.5 }} type="text" placeholder="Name" value={pName} onChange={e => setPName(e.target.value)} />
+            <input className="bz-input" style={{ flex: 0.7, padding: '9px 11px', fontSize: 12.5 }} type="number" placeholder="$" value={pAmt} onChange={e => setPAmt(e.target.value)} />
+            <button className="bz-btn bz-btn-ghost" style={{ padding: '0 14px', fontSize: 12.5 }} onClick={addPreset}>Add</button>
+          </div>
+          <div className="bz-eyebrow" style={{ margin: '30px 0 10px', display: 'block' }}>Current semester</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div><div style={{ fontSize: 14, fontWeight: 600 }}>{v.autoSem.name}</div><div style={{ fontSize: 11.5, color: 'var(--ink3)', marginTop: 1 }}>{mdy(v.autoSem.start)} – {mdy(v.autoSem.end)}</div></div>
+            <span style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--gold)' }}>Auto</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // NOTE: call screens as functions (not <Screen/>) so React keeps the same tree
+  // across renders — otherwise inputs remount and lose focus on every keystroke.
+  const screen = isWelcome ? Welcome() : tab === 'wallet' ? Wallet() : tab === 'stats' ? Stats() : tab === 'ledger' ? Ledger() : SettingsScreen();
+
+  const toastEl = (
+    <div className={`bz-toast ${toast.show ? 'show' : ''} ${toast.type}`}>
+      <i className={`ti ${toast.type === 'ok' ? 'ti-check' : 'ti-alert-triangle'}`} />{toast.msg}
+    </div>
+  );
+
+  if (!store.ready) {
+    return (
+      <div className="bz-root">
+        <div className="bz-authwrap" style={{ alignItems: 'center' }}>
+          <img src="/bee-wallet.png" alt="" width={72} height={72} style={{ opacity: 0.85 }} />
+        </div>
+      </div>
+    );
+  }
+
+  if (!store.authed) {
+    return (
+      <div className="bz-root">
+        {toastEl}
+        <div className="bz-shell"><div className="bz-authwrap">{Auth()}</div></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="outer">
-      <div className="shell">
-        <div className={`toast ${toast.show ? 'show' : ''} ${toast.type}`}>
-          <i className={`ti ${toast.type === 'ok' ? 'ti-check' : 'ti-alert-circle'}`} />{toast.msg}
+    <div className="bz-root">
+      {toastEl}
+      <div className="bz-shell">
+        <div className="bz-frame">
+          {/* desktop sidebar */}
+          <aside className="bz-sidebar">
+            <div className="bz-brand"><img src="/bee-wallet.png" alt="" /><div className="name">BuzzGet</div></div>
+            {NAV.map(([id, icon, label]) => (
+              <button key={id} className={`bz-navbtn ${!isWelcome && tab === id ? 'on' : ''}`} onClick={() => go(id)}>
+                <i className={`ti ${icon}`} />{label}
+              </button>
+            ))}
+            <div className="spacer" />
+            <div className="bz-sidefoot">
+              <div className="bz-acct">
+                <div className="bz-avatar">{acctInitials}</div>
+                <div className="meta"><div className="n">{acctName}</div><div className="e">{store.email}</div></div>
+                <button className="bz-iconbtn" title="Sign out" onClick={doSignOut}><i className="ti ti-logout" style={{ fontSize: 16 }} /></button>
+              </div>
+              {store.mode === 'cloud' && (
+                <div className="bz-sync">
+                  <span className="dot" style={{ background: store.sync === 'synced' ? 'var(--pos)' : store.sync === 'syncing' ? 'var(--gold2)' : 'var(--ink3)' }} />
+                  {store.sync === 'synced' ? 'Synced' : store.sync === 'syncing' ? 'Syncing…' : 'Offline'}
+                </div>
+              )}
+              <div className="sem-cap">Semester</div>
+              <div className="sem-name">{v.activeSemName}</div>
+              <div className="sem-range">{v.semRange}</div>
+            </div>
+          </aside>
+
+          {/* mobile header */}
+          <header className="bz-mobilehdr">
+            <div className="lhs"><img src="/bee-wallet.png" alt="" /><div className="nm">BuzzGet</div></div>
+            <div className="sem">{v.activeSemName}</div>
+          </header>
+
+          <main className="bz-main bz-scroll">{screen}</main>
+
+          {/* mobile bottom nav */}
+          <nav className="bz-mobilenav">
+            {NAV.map(([id, icon, label]) => (
+              <button key={id} className={!isWelcome && tab === id ? 'on' : ''} onClick={() => go(id)}>
+                <i className={`ti ${icon}`} /><span>{label}</span>
+              </button>
+            ))}
+          </nav>
         </div>
-        <div className="hdr">
-          <div className="hdr-left">
-            <div className="logo"><i className="ti ti-cash" aria-hidden="true" /></div>
-          </div>
-          {activeSemName
-            ? <div className="sem-badge">{activeSemName}</div>
-            : <div className="sem-badge" style={{ opacity: 0 }}>—</div>}
-        </div>
-        <div className="scroll-area">
-          {showWelcome
-            ? <div style={{ minHeight: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{Welcome()}</div>
-            : tab === 'wallet' ? Wallet() : tab === 'stats' ? Stats() : Settings()}
-        </div>
-        <nav className="bnav">
-          {navTabs.map(([id, ic, lb]) => (
-            <button key={id} className={`bnav-btn ${tab === id ? 'on' : ''}`} onClick={() => setTab(id)}>
-              <i className={`ti ${ic}`} aria-hidden="true" /><span className="bnav-label">{lb}</span>
-            </button>
-          ))}
-        </nav>
       </div>
     </div>
   );
