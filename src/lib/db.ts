@@ -4,7 +4,7 @@ import { supabase } from './supabase';
 export type DbTxType = 'spend' | 'add';
 export interface DbTx { id: string; user_id: string; type: DbTxType; amount: number; note: string; date: string; ts: string; }
 export interface DbPreset { id: string; user_id: string; name: string; amount: number; }
-export interface DbProfile { id: string; email: string | null; total: number; start_date: string | null; end_date: string | null; sem_name: string | null; }
+export interface DbProfile { id: string; email: string | null; username: string | null; total: number; start_date: string | null; end_date: string | null; sem_name: string | null; }
 
 function sb() {
   if (!supabase) throw new Error('Supabase is not configured');
@@ -49,6 +49,10 @@ export const db = {
   async saveProfile(userId: string, p: { total: number; start_date: string; end_date: string; sem_name: string }) {
     // upsert so it works whether or not the signup trigger already created the row
     const { error } = await sb().from('profiles').upsert({ id: userId, ...p });
+    if (error) throw error;
+  },
+  async updateUsername(userId: string, username: string) {
+    const { error } = await sb().from('profiles').upsert({ id: userId, username });
     if (error) throw error;
   },
 

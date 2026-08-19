@@ -18,9 +18,10 @@ export function signInWithEmail(email: string, password: string) {
   return sb().auth.signInWithPassword({ email, password });
 }
 
-/** Email + password sign-up. Passwords are hashed and stored by Supabase Auth. */
-export function signUpWithEmail(email: string, password: string) {
-  return sb().auth.signUp({ email, password });
+/** Email + password sign-up. Passwords are hashed and stored by Supabase Auth.
+ *  `username` rides along as user metadata so the DB trigger can save it. */
+export function signUpWithEmail(email: string, password: string, username?: string) {
+  return sb().auth.signUp({ email, password, options: username ? { data: { username } } : undefined });
 }
 
 export const signOut = () => sb().auth.signOut();

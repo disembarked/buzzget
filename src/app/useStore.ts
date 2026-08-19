@@ -20,6 +20,12 @@ const EMPTY_SETTINGS: Settings = { total: 0, startDate: '', endDate: '', semName
 const ds = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const localId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
+// Usernames are strictly alphanumeric — strips emojis, accents, spaces, symbols,
+// and Unicode "fancy fonts" (which live outside A-Za-z0-9). Capped at 20 chars.
+export const cleanUsername = (s: string) => (s || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 20);
+const genericUsername = (seed?: string) =>
+  'user' + (seed ? seed.replace(/[^a-z0-9]/gi, '').slice(0, 8) : Math.random().toString(36).slice(2, 8));
+
 const LS = {
   get<T>(k: string, d: T): T { try { const v = localStorage.getItem(k); return v != null ? JSON.parse(v) : d; } catch { return d; } },
   set(k: string, v: unknown) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } },
@@ -36,6 +42,7 @@ export interface Store {
   ready: boolean;
   authed: boolean;
   email: string;
+  username: string;
   authBusy: boolean;
   sync: Sync;
   syncError: string | null;
@@ -44,9 +51,10 @@ export interface Store {
   tx: Tx[];
   presets: Preset[];
   signInEmail: (email: string, password: string) => Promise<AuthResult>;
-  signUpEmail: (email: string, password: string) => Promise<AuthResult>;
+  signUpEmail: (email: string, password: string, username: string) => Promise<AuthResult>;
   signInGoogle: () => Promise<AuthResult>;
   signOut: () => Promise<void>;
+  changeUsername: (name: string) => void;
   addTx: (type: TxType, amount: number, note: string) => void;
   updateTx: (id: string, patch: { note: string; amount: number }) => void;
   removeTx: (id: string) => void;
@@ -62,8 +70,9 @@ export function useStore(): Store {
   const [ready, setReady] = useState(mode === 'local');
   // local mode initialises synchronously from localStorage; cloud mode starts
   // empty and hydrates once a session resolves.
-  const [authed, setAuthed] = useState(() => mode === 'local' && LS.get('bz4_auth', { authed: false, email: '' }).authed);
-  const [email, setEmail] = useState(() => (mode === 'local' ? LS.get('bz4_auth', { authed: false, email: '' }).email : ''));
+  const [authed, setAuthed] = useState(() => mode === 'local' && LS.get('bz4_auth', { authed: false, email: '', username: '' }).authed);
+  const [email, setEmail] = useState(() => (mode === 'local' ? LS.get('bz4_auth', { authed: false, email: '', username: '' }).email : ''));
+  const [username, setUsername] = useState(() => (mode === 'local' ? LS.get('bz4_auth', { authed: false, email: '', username: '' }).username || '' : ''));
   const [authBusy, setAuthBusy] = useState(false);
   const [sync, setSync] = useState<Sync>('synced');
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -84,7 +93,7 @@ export function useStore(): Store {
   useEffect(() => { if (mode === 'local') LS.set('bz4_s', settings); }, [mode, settings]);
   useEffect(() => { if (mode === 'local') LS.set('bz4_tx', tx); }, [mode, tx]);
   useEffect(() => { if (mode === 'local') LS.set('bz4_p', presets); }, [mode, presets]);
-  useEffect(() => { if (mode === 'local') LS.set('bz4_auth', { authed, email }); }, [mode, authed, email]);
+  useEffect(() => { if (mode === 'local') LS.set('bz4_auth', { authed, email, username }); }, [mode, authed, email, username]);
 
   /* ---------------- cloud mode: session + hydrate ---------------- */
   const hydrate = useCallback(async () => {
@@ -94,6 +103,14 @@ export function useStore(): Store {
       setSettings(profile
         ? { total: Number(profile.total) || 0, startDate: profile.start_date || '', endDate: profile.end_date || '', semName: profile.sem_name || '' }
         : EMPTY_SETTINGS);
+      // username: prefer the stored one; if missing (older row / edge case),
+      // generate a generic handle from the user id and persist it.
+      let uname = cleanUsername(profile?.username || '');
+      if (!uname && userId.current) {
+        uname = genericUsername(userId.current);
+        db.updateUsername(userId.current, uname).catch(() => { /* non-fatal */ });
+      }
+      setUsername(uname);
       setTx(rows.map(mapTx));
       if (prows.length) {
         setPresets(prows.map(p => ({ id: p.id, name: p.name, amount: Number(p.amount) })));
@@ -118,7 +135,7 @@ export function useStore(): Store {
         await hydrate();
       } else {
         userId.current = null;
-        setAuthed(false); setEmail('');
+        setAuthed(false); setEmail(''); setUsername('');
         setSettings(EMPTY_SETTINGS); setTx([]); setPresets([]);
       }
       setReady(true);
@@ -144,17 +161,22 @@ export function useStore(): Store {
 
   /* ---------------- auth actions ---------------- */
   const signInEmail = useCallback(async (e: string, pw: string): Promise<AuthResult> => {
-    if (mode === 'local') { setAuthed(true); setEmail(e); return {}; }
+    if (mode === 'local') {
+      setAuthed(true); setEmail(e);
+      setUsername(u => u || genericUsername(e.split('@')[0]));
+      return {};
+    }
     setAuthBusy(true);
     const { error } = await signInWithEmail(e, pw);
     setAuthBusy(false);
     return { error: error?.message };
   }, [mode]);
 
-  const signUpEmail = useCallback(async (e: string, pw: string): Promise<AuthResult> => {
-    if (mode === 'local') { setAuthed(true); setEmail(e); return {}; }
+  const signUpEmail = useCallback(async (e: string, pw: string, name: string): Promise<AuthResult> => {
+    const uname = cleanUsername(name) || genericUsername(e.split('@')[0]);
+    if (mode === 'local') { setAuthed(true); setEmail(e); setUsername(uname); return {}; }
     setAuthBusy(true);
-    const { data, error } = await signUpWithEmail(e, pw);
+    const { data, error } = await signUpWithEmail(e, pw, uname);
     setAuthBusy(false);
     if (error) return { error: error.message };
     if (!data.session) return { info: 'Account created — check your email to confirm, then sign in.' };
@@ -168,9 +190,19 @@ export function useStore(): Store {
   }, [mode]);
 
   const signOut = useCallback(async () => {
-    if (mode === 'local') { setAuthed(false); setEmail(''); LS.set('bz4_auth', { authed: false, email: '' }); return; }
+    if (mode === 'local') { setAuthed(false); setEmail(''); setUsername(''); LS.set('bz4_auth', { authed: false, email: '', username: '' }); return; }
     await sbSignOut();
   }, [mode]);
+
+  const changeUsername = useCallback((name: string) => {
+    const uname = cleanUsername(name);
+    if (!uname) return;
+    setUsername(uname);
+    if (mode === 'cloud' && userId.current) {
+      setSync('syncing');
+      db.updateUsername(userId.current, uname).then(done).catch(fail);
+    }
+  }, [mode, done, fail]);
 
   /* ---------------- data mutations (optimistic) ---------------- */
   const addTx = useCallback((type: TxType, amount: number, note: string) => {
@@ -240,9 +272,9 @@ export function useStore(): Store {
   }, [mode, done, fail]);
 
   return {
-    mode, ready, authed, email, authBusy, sync, syncError, ackError,
+    mode, ready, authed, email, username, authBusy, sync, syncError, ackError,
     settings, tx, presets,
-    signInEmail, signUpEmail, signInGoogle, signOut,
+    signInEmail, signUpEmail, signInGoogle, signOut, changeUsername,
     addTx, updateTx, removeTx, saveSettings, addPreset, removePreset, resetAll,
   };
 }

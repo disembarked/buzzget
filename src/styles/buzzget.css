@@ -268,6 +268,14 @@ input[type=date]{color:var(--ink)}
   .bz-frame{flex-direction:column;min-height:auto}
   .bz-main{padding:16px 16px 92px}
 
+  /* auth: top-align and let the page scroll so the on-screen keyboard never
+     covers the email/password/username fields */
+  .bz-authwrap{align-items:flex-start;min-height:auto;padding:24px 18px 96px}
+  .bz-auth{justify-content:flex-start}
+  .bz-auth .brand{margin-bottom:18px}
+  .bz-auth .brand img{width:58px;height:58px}
+  .bz-auth h1{font-size:27px}
+
   .bz-mobilehdr{
     display:flex;align-items:center;justify-content:space-between;
     padding:16px 16px 12px;border-bottom:1px solid var(--line);

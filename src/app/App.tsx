@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useStore, type Preset, type Tx } from './useStore';
+import { useStore, cleanUsername, type Preset, type Tx } from './useStore';
 
 type Tab = 'wallet' | 'stats' | 'ledger' | 'settings';
 type RangeId = '7' | '30' | 'sem' | 'all' | 'custom';
@@ -77,6 +77,8 @@ export default function App() {
   const [cfgTotal, setCfgTotal] = useState<string>('');
   // keep the settings-form total in sync when the profile loads/saves
   useEffect(() => { setCfgTotal(settings.total ? String(settings.total) : ''); }, [settings.total]);
+  // keep the username editor in sync when the profile loads
+  useEffect(() => { setUsernameDraft(store.username); }, [store.username]);
 
   // ledger state
   const [range, setRange] = useState<RangeId>('30');
@@ -88,10 +90,12 @@ export default function App() {
   // rotating welcome word
   const [welIdx, setWelIdx] = useState(0);
 
-  // auth form state (email/password + sign in vs sign up)
+  // auth form state (email/password/username + sign in vs sign up)
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [authEmail, setAuthEmail] = useState('');
   const [authPw, setAuthPw] = useState('');
+  const [authUsername, setAuthUsername] = useState('');
+  const [usernameDraft, setUsernameDraft] = useState(''); // settings editor
 
   const isSetup = settings.total > 0 && !!settings.startDate && !!settings.endDate;
   const isWelcome = !isSetup && tab === 'wallet';
@@ -117,19 +121,26 @@ export default function App() {
   }, [store.syncError]);
 
   /* ---------------- auth ---------------- */
-  const acctName = (store.email.split('@')[0] || 'user').replace(/[._]/g, ' ');
-  const acctInitials = acctName.split(' ').filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || 'U';
+  const acctName = store.username || (store.email.split('@')[0] || 'user');
+  const acctInitials = (store.username || store.email || 'U').replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || 'U';
   const doSignIn = async () => {
     const email = authEmail.trim();
     if (!email) { showToast('Enter your email', 'err'); return; }
+    if (authMode === 'signup' && !cleanUsername(authUsername)) { showToast('Choose a username (letters and numbers only)', 'err'); return; }
     if (store.mode === 'cloud' && authPw.length < 6) { showToast('Password must be at least 6 characters', 'err'); return; }
-    const res = authMode === 'signin' ? await store.signInEmail(email, authPw) : await store.signUpEmail(email, authPw);
+    const res = authMode === 'signin' ? await store.signInEmail(email, authPw) : await store.signUpEmail(email, authPw, authUsername);
     if (res.error) { showToast(res.error, 'err'); return; }
     if (res.info) { showToast(res.info); setAuthMode('signin'); return; }
     if (store.mode === 'local') showToast(authMode === 'signin' ? 'Signed in' : 'Account created');
   };
   const doGoogle = async () => { const res = await store.signInGoogle(); if (res.error) showToast(res.error, 'err'); };
-  const doSignOut = async () => { await store.signOut(); setAuthEmail(''); setAuthPw(''); setTab('wallet'); };
+  const doSignOut = async () => { await store.signOut(); setAuthEmail(''); setAuthPw(''); setAuthUsername(''); setTab('wallet'); };
+  const saveUsername = () => {
+    const u = cleanUsername(usernameDraft);
+    if (!u) { showToast('Username needs letters or numbers', 'err'); return; }
+    if (u === store.username) { showToast('That is already your username'); return; }
+    store.changeUsername(u); showToast('Username updated');
+  };
 
   /* ---------------- derived values ---------------- */
   const v = useMemo(() => {
@@ -336,6 +347,10 @@ export default function App() {
       {store.mode === 'cloud' && <>
         <button className="bz-google" onClick={doGoogle}><i className="ti ti-brand-google" style={{ fontSize: 16 }} />Continue with Google</button>
         <div className="bz-or">OR</div>
+      </>}
+      {authMode === 'signup' && <>
+        <label>Username</label>
+        <input className="bz-input" style={{ marginBottom: 13 }} type="text" inputMode="text" autoComplete="off" maxLength={20} placeholder="letters &amp; numbers only" value={authUsername} onChange={e => setAuthUsername(cleanUsername(e.target.value))} />
       </>}
       <label>Email</label>
       <input className="bz-input" style={{ marginBottom: 13 }} type="email" autoComplete="email" placeholder="you@gatech.edu" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
@@ -573,6 +588,12 @@ export default function App() {
       </div>
       <div className="bz-settings-grid">
         <div className="left">
+          <div className="bz-eyebrow" style={{ marginBottom: 12, display: 'block' }}>Username</div>
+          <label className="bz-field-lbl">Display name (letters &amp; numbers only)</label>
+          <div className="bz-addrow" style={{ marginTop: 0, marginBottom: 28 }}>
+            <input className="bz-input" style={{ flex: 1 }} type="text" maxLength={20} placeholder="username" value={usernameDraft} onChange={e => setUsernameDraft(cleanUsername(e.target.value))} />
+            <button className="bz-btn bz-btn-ghost" style={{ padding: '0 16px', fontSize: 12.5 }} onClick={saveUsername}>Save</button>
+          </div>
           <div className="bz-eyebrow" style={{ marginBottom: 12, display: 'block' }}>Balance</div>
           <label className="bz-field-lbl">Starting balance ($)</label>
           <input className="bz-input" style={{ marginBottom: 14 }} type="number" placeholder="e.g. 788" value={cfgTotal} onChange={e => setCfgTotal(e.target.value)} />
